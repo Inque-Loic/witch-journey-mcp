@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+*.pyc
+build/
+STATUS.md
+*.tmp
+*.log
+*.png
+!bridge-mod/Icon.png

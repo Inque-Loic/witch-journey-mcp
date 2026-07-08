@@ -1,0 +1,830 @@
+﻿Loader exceptions:
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Method 'Serialize' on type 'DataConfigFormatter' from assembly 'Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' tried to implicitly override a method with weaker type parameter constraints.
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Non-abstract, non-.cctor method in an interface.
+  Non-abstract, non-.cctor method in an interface.
+  Non-abstract, non-.cctor method in an interface.
+  Non-abstract, non-.cctor method in an interface.
+  Non-abstract, non-.cctor method in an interface.
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Method 'Serialize' on type 'ClientCommandBaseFormatter' from assembly 'Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' tried to implicitly override a method with weaker type parameter constraints.
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Method 'Serialize' on type 'CurHpFormatter' from assembly 'Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' tried to implicitly override a method with weaker type parameter constraints.
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Method 'Serialize' on type 'DefendFormatter' from assembly 'Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' tried to implicitly override a method with weaker type parameter constraints.
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Method 'Serialize' on type 'MaxHpFormatter' from assembly 'Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' tried to implicitly override a method with weaker type parameter constraints.
+  Could not load type 'System.Buffers.IBufferWriter`1' from assembly 'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.
+  Method 'Serialize' on type 'ObjTargetActionFormatter' from assembly 'Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' tried to implicitly override a method with weaker type parameter constraints.
+  Method 'Serialize' on type 'ObjTargetBaseFormatter' from assembly 'Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null' tried to implicitly override a method with weaker type parameter constraints.
+
+Witch.UI.Automation.RuntimeBattleAutomationFacade
+  method: Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimePlayCardResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] PlayCardAsync(Witch.UI.Automation.RuntimePlayCardRequest request)
+
+Witch.UI.Automation.RuntimeBattleAutomationService
+  method: static Witch.UI.Automation.RuntimeBattleAutomationFacade get_Facade()
+  method: static System.Boolean TryGetContext(Witch.UI.Window.FightUI& fightUi, System.String& error)
+  method: static Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimePlayCardResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] PlayCardAsync(Witch.UI.Automation.RuntimePlayCardRequest request)
+  method: static System.Boolean CanPlayCardLegally(CardItem cardItem, System.String& reason)
+  prop:   Witch.UI.Automation.RuntimeBattleAutomationFacade Facade
+
+Witch.UI.Automation.RuntimeBattleAutomationService+<>c
+  field:  Witch.UI.Automation.RuntimeBattleAutomationService+<>c <>9
+  field:  System.Func`2[[CardItem, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__4_0
+  field:   <>9__7_0
+  field:   <>9__7_2
+  field:   <>9__7_3
+
+Witch.UI.Automation.RuntimeBattleAutomationService+<>c__DisplayClass6_0
+  field:  Witch.UI.Automation.RuntimePlayCardRequest request
+
+Witch.UI.Automation.RuntimeBattleAutomationService+<>c__DisplayClass7_0
+  field:  Witch.UI.Automation.RuntimePlayCardRequest request
+
+Witch.UI.Automation.RuntimeBattleAutomationService+<PlayCardAsync>d__4
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimePlayCardResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimePlayCardRequest request
+
+Witch.UI.Automation.RuntimeGameplayAutomationFacade
+  method: Witch.UI.Automation.RuntimeLegalActionsSnapshot GetLegalActions()
+  method: Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimePerformActionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] PerformActionAsync(Witch.UI.Automation.RuntimePerformActionRequest request)
+
+Witch.UI.Automation.RuntimeGameplayAutomationService
+  method: static Witch.UI.Automation.RuntimeGameplayAutomationFacade get_Facade()
+  method: static Witch.UI.Automation.RuntimeLegalActionsSnapshot GetLegalActions()
+  method: static Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimePerformActionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] PerformActionAsync(Witch.UI.Automation.RuntimePerformActionRequest request)
+  prop:   Witch.UI.Automation.RuntimeGameplayAutomationFacade Facade
+
+Witch.UI.Automation.RuntimeGameplayAutomationService+<>c
+  field:  Witch.UI.Automation.RuntimeGameplayAutomationService+<>c <>9
+  field:  System.Func`2[[CardItem, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__3_0
+  field:  System.Func`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__6_0
+  field:  System.Func`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__6_1
+  field:  System.Func`2[[MapItem, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__6_2
+  field:  System.Func`2[[Michsky.MUIP.ButtonManager, Plugins, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__7_0
+
+Witch.UI.Automation.RuntimeGameplayAutomationService+<>c__DisplayClass4_0
+  field:  Witch.UI.Automation.RuntimePerformActionRequest request
+
+Witch.UI.Automation.RuntimeGameplayAutomationService+<PerformActionAsync>d__4
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimePerformActionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimePerformActionRequest request
+
+Witch.UI.Automation.RuntimeLegalAction
+  method: System.String get_Id()
+  method: System.Void set_Id(System.String value)
+  method: System.String get_Kind()
+  method: System.Void set_Kind(System.String value)
+  method: System.String get_Label()
+  method: System.Void set_Label(System.String value)
+  method: System.String get_Description()
+  method: System.Void set_Description(System.String value)
+  method: System.Collections.Generic.Dictionary`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.Object, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_Parameters()
+  method: System.Void set_Parameters(System.Collections.Generic.Dictionary`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.Object, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  prop:   System.String Id
+  prop:   System.String Kind
+  prop:   System.String Label
+  prop:   System.String Description
+  prop:   System.Collections.Generic.Dictionary`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.Object, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] Parameters
+
+Witch.UI.Automation.RuntimeLegalActionsSnapshot
+  method: System.String get_Phase()
+  method: System.Void set_Phase(System.String value)
+  method: System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeLegalAction, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] get_Actions()
+  method: System.Void set_Actions(System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeLegalAction, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] value)
+  prop:   System.String Phase
+  prop:   System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeLegalAction, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Actions
+
+Witch.UI.Automation.RuntimePerformActionRequest
+  method: System.String get_ActionId()
+  method: System.Void set_ActionId(System.String value)
+  prop:   System.String ActionId
+
+Witch.UI.Automation.RuntimePerformActionResult
+  method: System.Boolean get_Success()
+  method: System.Void set_Success(System.Boolean value)
+  method: System.String get_ActionId()
+  method: System.Void set_ActionId(System.String value)
+  method: System.String get_Message()
+  method: System.Void set_Message(System.String value)
+  method: System.Object get_Data()
+  method: System.Void set_Data(System.Object value)
+  prop:   System.Boolean Success
+  prop:   System.String ActionId
+  prop:   System.String Message
+  prop:   System.Object Data
+
+Witch.UI.Automation.RuntimePlayCardRequest
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_CardInstanceId()
+  method: System.Void set_CardInstanceId(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.String get_CardId()
+  method: System.Void set_CardId(System.String value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_CardIndex()
+  method: System.Void set_CardIndex(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_TargetInstanceId()
+  method: System.Void set_TargetInstanceId(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.String get_TargetName()
+  method: System.Void set_TargetName(System.String value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_TargetIndex()
+  method: System.Void set_TargetIndex(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] CardInstanceId
+  prop:   System.String CardId
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] CardIndex
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] TargetInstanceId
+  prop:   System.String TargetName
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] TargetIndex
+
+Witch.UI.Automation.RuntimePlayCardResult
+  method: System.Boolean get_Success()
+  method: System.Void set_Success(System.Boolean value)
+  method: System.String get_Message()
+  method: System.Void set_Message(System.String value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_CardInstanceId()
+  method: System.Void set_CardInstanceId(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.String get_CardType()
+  method: System.Void set_CardType(System.String value)
+  method: System.String get_CardId()
+  method: System.Void set_CardId(System.String value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_TargetInstanceId()
+  method: System.Void set_TargetInstanceId(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.String get_TargetName()
+  method: System.Void set_TargetName(System.String value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_TargetHpBefore()
+  method: System.Void set_TargetHpBefore(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_TargetHpAfter()
+  method: System.Void set_TargetHpAfter(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_HandCountBefore()
+  method: System.Void set_HandCountBefore(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_HandCountAfter()
+  method: System.Void set_HandCountAfter(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  prop:   System.Boolean Success
+  prop:   System.String Message
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] CardInstanceId
+  prop:   System.String CardType
+  prop:   System.String CardId
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] TargetInstanceId
+  prop:   System.String TargetName
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] TargetHpBefore
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] TargetHpAfter
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] HandCountBefore
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] HandCountAfter
+
+Witch.UI.Automation.RuntimeSceneAutomationFacade
+  method: Witch.UI.Automation.RuntimeSceneSnapshot Snapshot(Witch.UI.Automation.RuntimeSceneSnapshotRequest request)
+  method: Witch.UI.Automation.RuntimeSceneRaycastResult Raycast(Witch.UI.Automation.RuntimeSceneRaycastRequest request)
+  method: Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimeSceneInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] InteractAsync(Witch.UI.Automation.RuntimeSceneInteractionRequest request)
+
+Witch.UI.Automation.RuntimeSceneAutomationService
+  method: static Witch.UI.Automation.RuntimeSceneAutomationFacade get_Facade()
+  method: static System.Boolean TryGetContext(UnityEngine.Camera& camera, UnityEngine.EventSystems.EventSystem& eventSystem, System.String& error)
+  method: static Witch.UI.Automation.RuntimeSceneSnapshot CaptureSnapshot(Witch.UI.Automation.RuntimeSceneSnapshotRequest request)
+  method: static Witch.UI.Automation.RuntimeSceneRaycastResult Raycast(Witch.UI.Automation.RuntimeSceneRaycastRequest request)
+  method: static Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimeSceneInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] InteractAsync(Witch.UI.Automation.RuntimeSceneInteractionRequest request)
+  prop:   Witch.UI.Automation.RuntimeSceneAutomationFacade Facade
+
+Witch.UI.Automation.RuntimeSceneAutomationService+<>c
+  field:  Witch.UI.Automation.RuntimeSceneAutomationService+<>c <>9
+  field:  System.Func`2[[UnityEngine.Camera, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__3_0
+  field:  System.Func`2[[Witch.UI.Automation.RuntimeSceneObjectInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__4_0
+  field:  System.Func`2[[UnityEngine.RaycastHit, UnityEngine.PhysicsModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__5_0
+  field:  System.Func`2[[UnityEngine.RaycastHit2D, UnityEngine.Physics2DModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__5_1
+  field:  System.Func`2[[UnityEngine.Component, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__11_0
+  field:  System.Func`2[[UnityEngine.Component, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__11_1
+  field:  System.Func`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__11_2
+  field:  System.Func`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__11_3
+
+Witch.UI.Automation.RuntimeSceneAutomationService+<>c__DisplayClass15_0
+  field:  Witch.UI.Automation.RuntimeSceneObjectSelector selector
+
+Witch.UI.Automation.RuntimeSceneAutomationService+<ClickAsync>d__7
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeSceneInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeSceneObjectInfo objectInfo
+  field:  Witch.UI.Automation.RuntimeSceneInteractionRequest request
+  field:  UnityEngine.EventSystems.EventSystem eventSystem
+  field:  UnityEngine.Vector2 screenPoint
+
+Witch.UI.Automation.RuntimeSceneAutomationService+<DragAsync>d__8
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeSceneInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeSceneObjectInfo objectInfo
+  field:  Witch.UI.Automation.RuntimeSceneInteractionRequest request
+  field:  Witch.UI.Automation.RuntimeSceneSnapshot snapshot
+  field:  UnityEngine.Vector2 startPoint
+  field:  UnityEngine.EventSystems.EventSystem eventSystem
+
+Witch.UI.Automation.RuntimeSceneAutomationService+<InteractAsync>d__6
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeSceneInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeSceneInteractionRequest request
+
+Witch.UI.Automation.RuntimeSceneAutomationService+<ScrollAsync>d__9
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeSceneInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeSceneObjectInfo objectInfo
+  field:  Witch.UI.Automation.RuntimeSceneInteractionRequest request
+  field:  UnityEngine.Vector2 point
+
+Witch.UI.Automation.RuntimeSceneInteractionRequest
+  method: System.String get_Action()
+  method: System.Void set_Action(System.String value)
+  method: Witch.UI.Automation.RuntimeSceneObjectSelector get_Selector()
+  method: System.Void set_Selector(Witch.UI.Automation.RuntimeSceneObjectSelector value)
+  method: Witch.UI.Automation.RuntimeSceneObjectSelector get_TargetSelector()
+  method: System.Void set_TargetSelector(Witch.UI.Automation.RuntimeSceneObjectSelector value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_ScreenPoint()
+  method: System.Void set_ScreenPoint(Witch.UI.Automation.RuntimeUiPoint value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_TargetPoint()
+  method: System.Void set_TargetPoint(Witch.UI.Automation.RuntimeUiPoint value)
+  method: System.String get_Button()
+  method: System.Void set_Button(System.String value)
+  method: System.Single get_ScrollX()
+  method: System.Void set_ScrollX(System.Single value)
+  method: System.Single get_ScrollY()
+  method: System.Void set_ScrollY(System.Single value)
+  method: System.Int32 get_Steps()
+  method: System.Void set_Steps(System.Int32 value)
+  method: System.Int32 get_FramesPerStep()
+  method: System.Void set_FramesPerStep(System.Int32 value)
+  prop:   System.String Action
+  prop:   Witch.UI.Automation.RuntimeSceneObjectSelector Selector
+  prop:   Witch.UI.Automation.RuntimeSceneObjectSelector TargetSelector
+  prop:   Witch.UI.Automation.RuntimeUiPoint ScreenPoint
+  prop:   Witch.UI.Automation.RuntimeUiPoint TargetPoint
+  prop:   System.String Button
+  prop:   System.Single ScrollX
+  prop:   System.Single ScrollY
+  prop:   System.Int32 Steps
+  prop:   System.Int32 FramesPerStep
+
+Witch.UI.Automation.RuntimeSceneInteractionResult
+  method: System.Boolean get_Success()
+  method: System.Void set_Success(System.Boolean value)
+  method: System.String get_Action()
+  method: System.Void set_Action(System.String value)
+  method: System.String get_Message()
+  method: System.Void set_Message(System.String value)
+  method: Witch.UI.Automation.RuntimeSceneObjectInfo get_Object()
+  method: System.Void set_Object(Witch.UI.Automation.RuntimeSceneObjectInfo value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_FinalPointerPosition()
+  method: System.Void set_FinalPointerPosition(Witch.UI.Automation.RuntimeUiPoint value)
+  prop:   System.Boolean Success
+  prop:   System.String Action
+  prop:   System.String Message
+  prop:   Witch.UI.Automation.RuntimeSceneObjectInfo Object
+  prop:   Witch.UI.Automation.RuntimeUiPoint FinalPointerPosition
+
+Witch.UI.Automation.RuntimeSceneObjectInfo
+  method: System.String get_ObjectId()
+  method: System.Void set_ObjectId(System.String value)
+  method: System.Int32 get_InstanceId()
+  method: System.Void set_InstanceId(System.Int32 value)
+  method: System.String get_Name()
+  method: System.Void set_Name(System.String value)
+  method: System.String get_TransformPath()
+  method: System.Void set_TransformPath(System.String value)
+  method: System.String get_SceneName()
+  method: System.Void set_SceneName(System.String value)
+  method: System.String get_Tag()
+  method: System.Void set_Tag(System.String value)
+  method: System.Int32 get_Layer()
+  method: System.Void set_Layer(System.Int32 value)
+  method: System.String get_LayerName()
+  method: System.Void set_LayerName(System.String value)
+  method: System.Boolean get_ActiveSelf()
+  method: System.Void set_ActiveSelf(System.Boolean value)
+  method: System.Boolean get_ActiveInHierarchy()
+  method: System.Void set_ActiveInHierarchy(System.Boolean value)
+  method: System.Boolean get_Visible()
+  method: System.Void set_Visible(System.Boolean value)
+  method: System.Boolean get_HasCollider3D()
+  method: System.Void set_HasCollider3D(System.Boolean value)
+  method: System.Boolean get_HasCollider2D()
+  method: System.Void set_HasCollider2D(System.Boolean value)
+  method: System.Boolean get_HasPointerHandler()
+  method: System.Void set_HasPointerHandler(System.Boolean value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_ScreenPoint()
+  method: System.Void set_ScreenPoint(Witch.UI.Automation.RuntimeUiPoint value)
+  method: Witch.UI.Automation.RuntimeUiRect get_ScreenRect()
+  method: System.Void set_ScreenRect(Witch.UI.Automation.RuntimeUiRect value)
+  method: System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_ComponentTypes()
+  method: System.Void set_ComponentTypes(System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_SupportedActions()
+  method: System.Void set_SupportedActions(System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  prop:   System.String ObjectId
+  prop:   System.Int32 InstanceId
+  prop:   System.String Name
+  prop:   System.String TransformPath
+  prop:   System.String SceneName
+  prop:   System.String Tag
+  prop:   System.Int32 Layer
+  prop:   System.String LayerName
+  prop:   System.Boolean ActiveSelf
+  prop:   System.Boolean ActiveInHierarchy
+  prop:   System.Boolean Visible
+  prop:   System.Boolean HasCollider3D
+  prop:   System.Boolean HasCollider2D
+  prop:   System.Boolean HasPointerHandler
+  prop:   Witch.UI.Automation.RuntimeUiPoint ScreenPoint
+  prop:   Witch.UI.Automation.RuntimeUiRect ScreenRect
+  prop:   System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] ComponentTypes
+  prop:   System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] SupportedActions
+
+Witch.UI.Automation.RuntimeSceneObjectSelector
+  method: System.String get_ObjectId()
+  method: System.Void set_ObjectId(System.String value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_InstanceId()
+  method: System.Void set_InstanceId(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.String get_TransformPath()
+  method: System.Void set_TransformPath(System.String value)
+  method: System.String get_Name()
+  method: System.Void set_Name(System.String value)
+  method: System.Boolean get_IsEmpty()
+  prop:   System.String ObjectId
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] InstanceId
+  prop:   System.String TransformPath
+  prop:   System.String Name
+  prop:   System.Boolean IsEmpty
+
+Witch.UI.Automation.RuntimeSceneRaycastHitInfo
+  method: Witch.UI.Automation.RuntimeSceneObjectInfo get_Object()
+  method: System.Void set_Object(Witch.UI.Automation.RuntimeSceneObjectInfo value)
+  method: System.Single get_Distance()
+  method: System.Void set_Distance(System.Single value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_Point()
+  method: System.Void set_Point(Witch.UI.Automation.RuntimeUiPoint value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_Normal()
+  method: System.Void set_Normal(Witch.UI.Automation.RuntimeUiPoint value)
+  method: System.String get_HitType()
+  method: System.Void set_HitType(System.String value)
+  prop:   Witch.UI.Automation.RuntimeSceneObjectInfo Object
+  prop:   System.Single Distance
+  prop:   Witch.UI.Automation.RuntimeUiPoint Point
+  prop:   Witch.UI.Automation.RuntimeUiPoint Normal
+  prop:   System.String HitType
+
+Witch.UI.Automation.RuntimeSceneRaycastRequest
+  method: System.Single get_X()
+  method: System.Void set_X(System.Single value)
+  method: System.Single get_Y()
+  method: System.Void set_Y(System.Single value)
+  method: System.Single get_Distance()
+  method: System.Void set_Distance(System.Single value)
+  prop:   System.Single X
+  prop:   System.Single Y
+  prop:   System.Single Distance
+
+Witch.UI.Automation.RuntimeSceneRaycastResult
+  method: Witch.UI.Automation.RuntimeUiPoint get_ScreenPoint()
+  method: System.Void set_ScreenPoint(Witch.UI.Automation.RuntimeUiPoint value)
+  method: System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneRaycastHitInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] get_Hits3D()
+  method: System.Void set_Hits3D(System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneRaycastHitInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] value)
+  method: System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneRaycastHitInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] get_Hits2D()
+  method: System.Void set_Hits2D(System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneRaycastHitInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] value)
+  prop:   Witch.UI.Automation.RuntimeUiPoint ScreenPoint
+  prop:   System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneRaycastHitInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Hits3D
+  prop:   System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneRaycastHitInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Hits2D
+
+Witch.UI.Automation.RuntimeSceneSnapshot
+  method: System.String get_CapturedAtUtc()
+  method: System.Void set_CapturedAtUtc(System.String value)
+  method: System.String get_SceneName()
+  method: System.Void set_SceneName(System.String value)
+  method: System.String get_CameraName()
+  method: System.Void set_CameraName(System.String value)
+  method: System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneObjectInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] get_Objects()
+  method: System.Void set_Objects(System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneObjectInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] value)
+  method: System.Int32 get_TotalObjects()
+  method: System.Void set_TotalObjects(System.Int32 value)
+  method: System.String get_ScreenshotPath()
+  method: System.Void set_ScreenshotPath(System.String value)
+  method: System.String get_ScreenshotFullPath()
+  method: System.Void set_ScreenshotFullPath(System.String value)
+  method: System.Boolean get_ScreenshotIsAsync()
+  method: System.Void set_ScreenshotIsAsync(System.Boolean value)
+  method: System.String get_ScreenshotError()
+  method: System.Void set_ScreenshotError(System.String value)
+  prop:   System.String CapturedAtUtc
+  prop:   System.String SceneName
+  prop:   System.String CameraName
+  prop:   System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeSceneObjectInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Objects
+  prop:   System.Int32 TotalObjects
+  prop:   System.String ScreenshotPath
+  prop:   System.String ScreenshotFullPath
+  prop:   System.Boolean ScreenshotIsAsync
+  prop:   System.String ScreenshotError
+
+Witch.UI.Automation.RuntimeSceneSnapshotRequest
+  method: System.Boolean get_IncludeInactive()
+  method: System.Void set_IncludeInactive(System.Boolean value)
+  method: System.Boolean get_OnlyInteractive()
+  method: System.Void set_OnlyInteractive(System.Boolean value)
+  prop:   System.Boolean IncludeInactive
+  prop:   System.Boolean OnlyInteractive
+
+Witch.UI.Automation.RuntimeUiAutomationFacade
+  method: Witch.UI.Automation.RuntimeUiSnapshot Snapshot(Witch.UI.Automation.RuntimeUiSnapshotRequest request)
+  method: Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimeUiInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] InteractAsync(Witch.UI.Automation.RuntimeUiInteractionRequest request)
+  method: Witch.UI.Automation.RuntimeUiWaitCheckResult EvaluateWait(Witch.UI.Automation.RuntimeUiSnapshot snapshot, Witch.UI.Automation.RuntimeUiWaitRequest request)
+  method: System.String LayoutSignature(Witch.UI.Automation.RuntimeUiSnapshot snapshot)
+
+Witch.UI.Automation.RuntimeUiAutomationService
+  method: static Witch.UI.Automation.RuntimeUiAutomationFacade get_Facade()
+  method: static System.Boolean TryGetContext(System.String& error)
+  method: static System.Boolean TryGetContext(Witch.UI.Automation.RuntimeUiContext& context, System.String& error)
+  method: static Witch.UI.Automation.RuntimeUiSnapshot CaptureSnapshot(Witch.UI.Automation.RuntimeUiSnapshotRequest request)
+  method: static Witch.UI.Automation.RuntimeUiWaitCheckResult EvaluateWaitCondition(Witch.UI.Automation.RuntimeUiSnapshot snapshot, Witch.UI.Automation.RuntimeUiWaitRequest request)
+  method: static Cysharp.Threading.Tasks.UniTask`1[[Witch.UI.Automation.RuntimeUiInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] InteractAsync(Witch.UI.Automation.RuntimeUiInteractionRequest request)
+  method: static System.String CreateLayoutSignature(Witch.UI.Automation.RuntimeUiSnapshot snapshot)
+  prop:   Witch.UI.Automation.RuntimeUiAutomationFacade Facade
+
+Witch.UI.Automation.RuntimeUiAutomationService+<$Rougamo_BuildClickSamplePoints>d__74
+  field:  UnityEngine.Rect <>3__rect
+
+Witch.UI.Automation.RuntimeUiAutomationService+<>c
+  field:  Witch.UI.Automation.RuntimeUiAutomationService+<>c <>9
+  field:  System.Func`2[[Witch.UI.UIBase, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__9_0
+  field:  System.Func`2[[Witch.UI.UIBase, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__9_1
+  field:  System.Func`2[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__9_2
+  field:  System.Func`2[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__9_3
+  field:  System.Func`2[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__11_1
+  field:  System.Func`2[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__12_0
+  field:  System.Func`2[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__12_1
+  field:  System.Func`2[[UnityEngine.Component, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__24_0
+  field:  System.Func`2[[UnityEngine.Component, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__24_1
+  field:  System.Func`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__24_2
+  field:  System.Func`2[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089],[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__40_0
+  field:  System.Func`2[[UnityEngine.GameObject, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] <>9__55_0
+  field:  System.Func`2[[UnityEngine.GameObject, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null],[UnityEngine.Transform, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>9__55_1
+
+Witch.UI.Automation.RuntimeUiAutomationService+<>c__DisplayClass10_0
+  field:  Witch.UI.Automation.RuntimeUiWaitRequest request
+
+Witch.UI.Automation.RuntimeUiAutomationService+<>c__DisplayClass11_0
+  field:  Witch.UI.Automation.RuntimeUiNode matchedNode
+
+Witch.UI.Automation.RuntimeUiAutomationService+<>c__DisplayClass20_0
+  field:  Witch.UI.Automation.RuntimeUiNodeSelector selector
+
+Witch.UI.Automation.RuntimeUiAutomationService+<>c__DisplayClass54_0
+  field:  Witch.UI.Automation.RuntimeUiNodeSelector selector
+
+Witch.UI.Automation.RuntimeUiAutomationService+<>c__DisplayClass55_0
+  field:  System.String[] parts
+
+Witch.UI.Automation.RuntimeUiAutomationService+<BuildClickSamplePoints>d__33
+  field:  UnityEngine.Rect <>3__rect
+  field:  Modifiable >_<rougamo_mo_0
+  field:  Rougamo.Context.MethodContext >_<rougamo_context
+
+Witch.UI.Automation.RuntimeUiAutomationService+<ClickAsync>d__15
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeUiInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeUiNode matchedNode
+  field:  Witch.UI.Automation.RuntimeUiContext context
+  field:  UnityEngine.Transform matchedTransform
+  field:  Witch.UI.Automation.RuntimeUiInteractionRequest request
+
+Witch.UI.Automation.RuntimeUiAutomationService+<DragAsync>d__19
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeUiInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeUiInteractionRequest request
+  field:  Witch.UI.Automation.RuntimeUiNode matchedNode
+  field:  Witch.UI.Automation.RuntimeUiSnapshot snapshot
+  field:  Witch.UI.Automation.RuntimeUiContext context
+  field:  UnityEngine.Transform matchedTransform
+
+Witch.UI.Automation.RuntimeUiAutomationService+<InteractAsync>d__11
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeUiInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeUiInteractionRequest request
+
+Witch.UI.Automation.RuntimeUiAutomationService+<ScrollAsync>d__18
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeUiInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  UnityEngine.Transform matchedTransform
+  field:  Witch.UI.Automation.RuntimeUiNode matchedNode
+  field:  Witch.UI.Automation.RuntimeUiInteractionRequest request
+
+Witch.UI.Automation.RuntimeUiAutomationService+<SetTextAsync>d__17
+  field:  System.Int32 <>1__state
+  field:  Cysharp.Threading.Tasks.CompilerServices.AsyncUniTaskMethodBuilder`1[[Witch.UI.Automation.RuntimeUiInteractionResult, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] <>t__builder
+  field:  Witch.UI.Automation.RuntimeUiNode matchedNode
+  field:  UnityEngine.Transform matchedTransform
+  field:  Witch.UI.Automation.RuntimeUiInteractionRequest request
+
+Witch.UI.Automation.RuntimeUiCanvasInfo
+  method: System.String get_Name()
+  method: System.Void set_Name(System.String value)
+  method: System.Int32 get_InstanceId()
+  method: System.Void set_InstanceId(System.Int32 value)
+  method: System.String get_TransformPath()
+  method: System.Void set_TransformPath(System.String value)
+  method: System.Boolean get_ActiveInHierarchy()
+  method: System.Void set_ActiveInHierarchy(System.Boolean value)
+  method: System.Boolean get_Enabled()
+  method: System.Void set_Enabled(System.Boolean value)
+  method: System.String get_RenderMode()
+  method: System.Void set_RenderMode(System.String value)
+  method: System.Int32 get_SortingOrder()
+  method: System.Void set_SortingOrder(System.Int32 value)
+  prop:   System.String Name
+  prop:   System.Int32 InstanceId
+  prop:   System.String TransformPath
+  prop:   System.Boolean ActiveInHierarchy
+  prop:   System.Boolean Enabled
+  prop:   System.String RenderMode
+  prop:   System.Int32 SortingOrder
+
+Witch.UI.Automation.RuntimeUiContext
+  method: Witch.UI.UIManager get_UIManager()
+  method: UnityEngine.Canvas get_MainCanvas()
+  method: UnityEngine.Canvas get_UpperCanvas()
+  method: UnityEngine.EventSystems.EventSystem get_EventSystem()
+  prop:   Witch.UI.UIManager UIManager
+  prop:   UnityEngine.Canvas MainCanvas
+  prop:   UnityEngine.Canvas UpperCanvas
+  prop:   UnityEngine.EventSystems.EventSystem EventSystem
+
+Witch.UI.Automation.RuntimeUiInteractionRequest
+  method: System.String get_Action()
+  method: System.Void set_Action(System.String value)
+  method: Witch.UI.Automation.RuntimeUiNodeSelector get_Selector()
+  method: System.Void set_Selector(Witch.UI.Automation.RuntimeUiNodeSelector value)
+  method: Witch.UI.Automation.RuntimeUiNodeSelector get_TargetSelector()
+  method: System.Void set_TargetSelector(Witch.UI.Automation.RuntimeUiNodeSelector value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_TargetPoint()
+  method: System.Void set_TargetPoint(Witch.UI.Automation.RuntimeUiPoint value)
+  method: System.String get_Text()
+  method: System.Void set_Text(System.String value)
+  method: System.Boolean get_Submit()
+  method: System.Void set_Submit(System.Boolean value)
+  method: System.Boolean get_RequireClickable()
+  method: System.Void set_RequireClickable(System.Boolean value)
+  method: System.String get_Button()
+  method: System.Void set_Button(System.String value)
+  method: System.Single get_DeltaX()
+  method: System.Void set_DeltaX(System.Single value)
+  method: System.Single get_DeltaY()
+  method: System.Void set_DeltaY(System.Single value)
+  method: System.Int32 get_Steps()
+  method: System.Void set_Steps(System.Int32 value)
+  method: System.Int32 get_FramesPerStep()
+  method: System.Void set_FramesPerStep(System.Int32 value)
+  method: System.Boolean get_IncludePostSnapshot()
+  method: System.Void set_IncludePostSnapshot(System.Boolean value)
+  prop:   System.String Action
+  prop:   Witch.UI.Automation.RuntimeUiNodeSelector Selector
+  prop:   Witch.UI.Automation.RuntimeUiNodeSelector TargetSelector
+  prop:   Witch.UI.Automation.RuntimeUiPoint TargetPoint
+  prop:   System.String Text
+  prop:   System.Boolean Submit
+  prop:   System.Boolean RequireClickable
+  prop:   System.String Button
+  prop:   System.Single DeltaX
+  prop:   System.Single DeltaY
+  prop:   System.Int32 Steps
+  prop:   System.Int32 FramesPerStep
+  prop:   System.Boolean IncludePostSnapshot
+
+Witch.UI.Automation.RuntimeUiInteractionResult
+  method: System.Boolean get_Success()
+  method: System.Void set_Success(System.Boolean value)
+  method: System.String get_Action()
+  method: System.Void set_Action(System.String value)
+  method: System.String get_Message()
+  method: System.Void set_Message(System.String value)
+  method: Witch.UI.Automation.RuntimeUiNode get_MatchedNode()
+  method: System.Void set_MatchedNode(Witch.UI.Automation.RuntimeUiNode value)
+  method: Witch.UI.Automation.RuntimeUiNode get_PreNode()
+  method: System.Void set_PreNode(Witch.UI.Automation.RuntimeUiNode value)
+  method: Witch.UI.Automation.RuntimeUiNode get_PostNode()
+  method: System.Void set_PostNode(Witch.UI.Automation.RuntimeUiNode value)
+  method: Witch.UI.Automation.RuntimeUiSnapshot get_PostSnapshot()
+  method: System.Void set_PostSnapshot(Witch.UI.Automation.RuntimeUiSnapshot value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_FinalPointerPosition()
+  method: System.Void set_FinalPointerPosition(Witch.UI.Automation.RuntimeUiPoint value)
+  method: System.Nullable`1[[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_HorizontalNormalizedPosition()
+  method: System.Void set_HorizontalNormalizedPosition(System.Nullable`1[[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Nullable`1[[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_VerticalNormalizedPosition()
+  method: System.Void set_VerticalNormalizedPosition(System.Nullable`1[[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.String get_HoveredNodeId()
+  method: System.Void set_HoveredNodeId(System.String value)
+  prop:   System.Boolean Success
+  prop:   System.String Action
+  prop:   System.String Message
+  prop:   Witch.UI.Automation.RuntimeUiNode MatchedNode
+  prop:   Witch.UI.Automation.RuntimeUiNode PreNode
+  prop:   Witch.UI.Automation.RuntimeUiNode PostNode
+  prop:   Witch.UI.Automation.RuntimeUiSnapshot PostSnapshot
+  prop:   Witch.UI.Automation.RuntimeUiPoint FinalPointerPosition
+  prop:   System.Nullable`1[[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] HorizontalNormalizedPosition
+  prop:   System.Nullable`1[[System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] VerticalNormalizedPosition
+  prop:   System.String HoveredNodeId
+
+Witch.UI.Automation.RuntimeUiNode
+  method: System.String get_NodeId()
+  method: System.Void set_NodeId(System.String value)
+  method: System.String get_WindowName()
+  method: System.Void set_WindowName(System.String value)
+  method: System.String get_TransformPath()
+  method: System.Void set_TransformPath(System.String value)
+  method: System.Int32 get_InstanceId()
+  method: System.Void set_InstanceId(System.Int32 value)
+  method: System.String get_Name()
+  method: System.Void set_Name(System.String value)
+  method: System.String get_Label()
+  method: System.Void set_Label(System.String value)
+  method: System.String get_Text()
+  method: System.Void set_Text(System.String value)
+  method: System.Boolean get_ActiveSelf()
+  method: System.Void set_ActiveSelf(System.Boolean value)
+  method: System.Boolean get_ActiveInHierarchy()
+  method: System.Void set_ActiveInHierarchy(System.Boolean value)
+  method: System.Boolean get_Visible()
+  method: System.Void set_Visible(System.Boolean value)
+  method: System.Boolean get_Interactable()
+  method: System.Void set_Interactable(System.Boolean value)
+  method: System.Boolean get_Clickable()
+  method: System.Void set_Clickable(System.Boolean value)
+  method: System.Boolean get_BlocksRaycasts()
+  method: System.Void set_BlocksRaycasts(System.Boolean value)
+  method: System.Int32 get_Depth()
+  method: System.Void set_Depth(System.Int32 value)
+  method: System.String get_ParentNodeId()
+  method: System.Void set_ParentNodeId(System.String value)
+  method: System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_ChildNodeIds()
+  method: System.Void set_ChildNodeIds(System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_ComponentTypes()
+  method: System.Void set_ComponentTypes(System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_SupportedActions()
+  method: System.Void set_SupportedActions(System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: Witch.UI.Automation.RuntimeUiRect get_ScreenRect()
+  method: System.Void set_ScreenRect(Witch.UI.Automation.RuntimeUiRect value)
+  method: Witch.UI.Automation.RuntimeUiPoint get_PreferredClickPoint()
+  method: System.Void set_PreferredClickPoint(Witch.UI.Automation.RuntimeUiPoint value)
+  prop:   System.String NodeId
+  prop:   System.String WindowName
+  prop:   System.String TransformPath
+  prop:   System.Int32 InstanceId
+  prop:   System.String Name
+  prop:   System.String Label
+  prop:   System.String Text
+  prop:   System.Boolean ActiveSelf
+  prop:   System.Boolean ActiveInHierarchy
+  prop:   System.Boolean Visible
+  prop:   System.Boolean Interactable
+  prop:   System.Boolean Clickable
+  prop:   System.Boolean BlocksRaycasts
+  prop:   System.Int32 Depth
+  prop:   System.String ParentNodeId
+  prop:   System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] ChildNodeIds
+  prop:   System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] ComponentTypes
+  prop:   System.Collections.Generic.List`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] SupportedActions
+  prop:   Witch.UI.Automation.RuntimeUiRect ScreenRect
+  prop:   Witch.UI.Automation.RuntimeUiPoint PreferredClickPoint
+
+Witch.UI.Automation.RuntimeUiNodeSelector
+  method: System.String get_NodeId()
+  method: System.Void set_NodeId(System.String value)
+  method: System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] get_InstanceId()
+  method: System.Void set_InstanceId(System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] value)
+  method: System.String get_WindowName()
+  method: System.Void set_WindowName(System.String value)
+  method: System.String get_TransformPath()
+  method: System.Void set_TransformPath(System.String value)
+  method: System.String get_Label()
+  method: System.Void set_Label(System.String value)
+  method: System.Boolean get_IsEmpty()
+  prop:   System.String NodeId
+  prop:   System.Nullable`1[[System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]] InstanceId
+  prop:   System.String WindowName
+  prop:   System.String TransformPath
+  prop:   System.String Label
+  prop:   System.Boolean IsEmpty
+
+Witch.UI.Automation.RuntimeUiPoint
+  method: System.Single get_X()
+  method: System.Void set_X(System.Single value)
+  method: System.Single get_Y()
+  method: System.Void set_Y(System.Single value)
+  prop:   System.Single X
+  prop:   System.Single Y
+
+Witch.UI.Automation.RuntimeUiRect
+  method: System.Single get_X()
+  method: System.Void set_X(System.Single value)
+  method: System.Single get_Y()
+  method: System.Void set_Y(System.Single value)
+  method: System.Single get_Width()
+  method: System.Void set_Width(System.Single value)
+  method: System.Single get_Height()
+  method: System.Void set_Height(System.Single value)
+  prop:   System.Single X
+  prop:   System.Single Y
+  prop:   System.Single Width
+  prop:   System.Single Height
+
+Witch.UI.Automation.RuntimeUiSnapshot
+  method: System.String get_Scope()
+  method: System.Void set_Scope(System.String value)
+  method: System.Boolean get_IncludeHidden()
+  method: System.Void set_IncludeHidden(System.Boolean value)
+  method: System.String get_CapturedAtUtc()
+  method: System.Void set_CapturedAtUtc(System.String value)
+  method: System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiCanvasInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] get_Canvases()
+  method: System.Void set_Canvases(System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiCanvasInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] value)
+  method: System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiWindowInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] get_Windows()
+  method: System.Void set_Windows(System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiWindowInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] value)
+  method: System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] get_Nodes()
+  method: System.Void set_Nodes(System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] value)
+  method: System.Int32 get_TotalNodes()
+  method: System.Void set_TotalNodes(System.Int32 value)
+  method: System.String get_LayoutSignature()
+  method: System.Void set_LayoutSignature(System.String value)
+  method: System.String get_ScreenshotPath()
+  method: System.Void set_ScreenshotPath(System.String value)
+  method: System.String get_ScreenshotFullPath()
+  method: System.Void set_ScreenshotFullPath(System.String value)
+  method: System.Boolean get_ScreenshotIsAsync()
+  method: System.Void set_ScreenshotIsAsync(System.Boolean value)
+  method: System.String get_ScreenshotError()
+  method: System.Void set_ScreenshotError(System.String value)
+  prop:   System.String Scope
+  prop:   System.Boolean IncludeHidden
+  prop:   System.String CapturedAtUtc
+  prop:   System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiCanvasInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Canvases
+  prop:   System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiWindowInfo, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Windows
+  prop:   System.Collections.Generic.List`1[[Witch.UI.Automation.RuntimeUiNode, Witch, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]] Nodes
+  prop:   System.Int32 TotalNodes
+  prop:   System.String LayoutSignature
+  prop:   System.String ScreenshotPath
+  prop:   System.String ScreenshotFullPath
+  prop:   System.Boolean ScreenshotIsAsync
+  prop:   System.String ScreenshotError
+
+Witch.UI.Automation.RuntimeUiSnapshotRequest
+  method: System.Boolean get_IncludeHidden()
+  method: System.Void set_IncludeHidden(System.Boolean value)
+  method: System.String get_Scope()
+  method: System.Void set_Scope(System.String value)
+  prop:   System.Boolean IncludeHidden
+  prop:   System.String Scope
+
+Witch.UI.Automation.RuntimeUiWaitCheckResult
+  method: System.Boolean get_Satisfied()
+  method: System.Void set_Satisfied(System.Boolean value)
+  method: System.String get_Message()
+  method: System.Void set_Message(System.String value)
+  method: Witch.UI.Automation.RuntimeUiNode get_Node()
+  method: System.Void set_Node(Witch.UI.Automation.RuntimeUiNode value)
+  method: Witch.UI.Automation.RuntimeUiWindowInfo get_Window()
+  method: System.Void set_Window(Witch.UI.Automation.RuntimeUiWindowInfo value)
+  method: System.String get_LayoutSignature()
+  method: System.Void set_LayoutSignature(System.String value)
+  prop:   System.Boolean Satisfied
+  prop:   System.String Message
+  prop:   Witch.UI.Automation.RuntimeUiNode Node
+  prop:   Witch.UI.Automation.RuntimeUiWindowInfo Window
+  prop:   System.String LayoutSignature
+
+Witch.UI.Automation.RuntimeUiWaitRequest
+  method: System.String get_Condition()
+  method: System.Void set_Condition(System.String value)
+  method: Witch.UI.Automation.RuntimeUiNodeSelector get_Selector()
+  method: System.Void set_Selector(Witch.UI.Automation.RuntimeUiNodeSelector value)
+  method: System.String get_WindowName()
+  method: System.Void set_WindowName(System.String value)
+  method: System.String get_ExpectedText()
+  method: System.Void set_ExpectedText(System.String value)
+  prop:   System.String Condition
+  prop:   Witch.UI.Automation.RuntimeUiNodeSelector Selector
+  prop:   System.String WindowName
+  prop:   System.String ExpectedText
+
+Witch.UI.Automation.RuntimeUiWindowInfo
+  method: System.String get_WindowName()
+  method: System.Void set_WindowName(System.String value)
+  method: System.Int32 get_InstanceId()
+  method: System.Void set_InstanceId(System.Int32 value)
+  method: System.String get_NodeId()
+  method: System.Void set_NodeId(System.String value)
+  method: System.String get_TransformPath()
+  method: System.Void set_TransformPath(System.String value)
+  method: System.Boolean get_ActiveInHierarchy()
+  method: System.Void set_ActiveInHierarchy(System.Boolean value)
+  method: System.Boolean get_Visible()
+  method: System.Void set_Visible(System.Boolean value)
+  method: System.Int32 get_SiblingIndex()
+  method: System.Void set_SiblingIndex(System.Int32 value)
+  prop:   System.String WindowName
+  prop:   System.Int32 InstanceId
+  prop:   System.String NodeId
+  prop:   System.String TransformPath
+  prop:   System.Boolean ActiveInHierarchy
+  prop:   System.Boolean Visible
+  prop:   System.Int32 SiblingIndex

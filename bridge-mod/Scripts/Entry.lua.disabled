@@ -1,0 +1,473 @@
+-- Codex MCP Bridge
+-- Exposes the built-in Witch.UI.Automation services through a localhost HTTP endpoint.
+
+local BRIDGE_PREFIX = "[CodexMcpBridge] "
+local BRIDGE_PORT = 18171
+local BRIDGE_URL = "http://127.0.0.1:" .. tostring(BRIDGE_PORT) .. "/"
+
+local listener = nil
+local listenerThread = nil
+local running = false
+local queue = {}
+local nextRequestId = 1
+
+local function log(message)
+    CS.UnityEngine.Debug.Log(BRIDGE_PREFIX .. tostring(message))
+end
+
+local function logError(message)
+    CS.UnityEngine.Debug.LogError(BRIDGE_PREFIX .. tostring(message))
+end
+
+local function jsonEncode(value)
+    return CS.Newtonsoft.Json.JsonConvert.SerializeObject(value)
+end
+
+local function jsonDecode(text)
+    if text == nil or tostring(text) == "" then
+        return CS.Newtonsoft.Json.Linq.JObject.Parse("{}")
+    end
+    return CS.Newtonsoft.Json.Linq.JObject.Parse(tostring(text))
+end
+
+local function tokenString(obj, name, defaultValue)
+    if obj == nil then
+        return defaultValue
+    end
+    local token = obj:get_Item(name)
+    if token == nil or token.Type == CS.Newtonsoft.Json.Linq.JTokenType.Null then
+        return defaultValue
+    end
+    return tostring(token)
+end
+
+local function tokenBool(obj, name, defaultValue)
+    if obj == nil then
+        return defaultValue
+    end
+    local token = obj:get_Item(name)
+    if token == nil or token.Type == CS.Newtonsoft.Json.Linq.JTokenType.Null then
+        return defaultValue
+    end
+    local text = string.lower(tostring(token))
+    return text == "true" or text == "1"
+end
+
+local function tokenNumber(obj, name, defaultValue)
+    if obj == nil then
+        return defaultValue
+    end
+    local token = obj:get_Item(name)
+    if token == nil or token.Type == CS.Newtonsoft.Json.Linq.JTokenType.Null then
+        return defaultValue
+    end
+    local num = tonumber(tostring(token))
+    if num == nil then
+        return defaultValue
+    end
+    return num
+end
+
+local function tokenObject(obj, name)
+    if obj == nil then
+        return nil
+    end
+    local token = obj:get_Item(name)
+    if token == nil or token.Type == CS.Newtonsoft.Json.Linq.JTokenType.Null then
+        return nil
+    end
+    return token
+end
+
+local function setProperty(target, fieldName, value)
+    if target == nil or value == nil then
+        return
+    end
+
+    local okDirect = pcall(function()
+        target[fieldName] = value
+    end)
+    if okDirect then
+        return
+    end
+
+    pcall(function()
+        local prop = target:GetType():GetProperty(fieldName)
+        if prop ~= nil then
+            prop:SetValue(target, value, nil)
+        end
+    end)
+end
+
+local function setNullableInt(target, fieldName, value)
+    if value ~= nil then
+        setProperty(target, fieldName, math.floor(value))
+    end
+end
+
+local function setString(target, fieldName, value)
+    if value ~= nil then
+        setProperty(target, fieldName, tostring(value))
+    end
+end
+
+local function makePoint(obj)
+    if obj == nil then
+        return nil
+    end
+    local point = CS.Witch.UI.Automation.RuntimeUiPoint.New()
+    point.X = tokenNumber(obj, "x", 0)
+    point.Y = tokenNumber(obj, "y", 0)
+    return point
+end
+
+local function makeUiSelector(obj)
+    if obj == nil then
+        return nil
+    end
+    local selector = CS.Witch.UI.Automation.RuntimeUiNodeSelector.New()
+    setString(selector, "NodeId", tokenString(obj, "nodeId", nil))
+    setNullableInt(selector, "InstanceId", tokenNumber(obj, "instanceId", nil))
+    setString(selector, "WindowName", tokenString(obj, "windowName", nil))
+    setString(selector, "TransformPath", tokenString(obj, "transformPath", nil))
+    setString(selector, "Label", tokenString(obj, "label", nil))
+    return selector
+end
+
+local function makeSceneSelector(obj)
+    if obj == nil then
+        return nil
+    end
+    local selector = CS.Witch.UI.Automation.RuntimeSceneObjectSelector.New()
+    setString(selector, "ObjectId", tokenString(obj, "objectId", nil))
+    setNullableInt(selector, "InstanceId", tokenNumber(obj, "instanceId", nil))
+    setString(selector, "TransformPath", tokenString(obj, "transformPath", nil))
+    setString(selector, "Name", tokenString(obj, "name", nil))
+    return selector
+end
+
+local function tryAwait(taskLike)
+    if taskLike == nil then
+        return nil
+    end
+
+    local okAwaiter, awaiter = pcall(function()
+        return taskLike:GetAwaiter()
+    end)
+    if not okAwaiter or awaiter == nil then
+        return taskLike
+    end
+
+    local okResult, result = pcall(function()
+        return awaiter:GetResult()
+    end)
+    if okResult then
+        return result
+    end
+
+    error(result)
+end
+
+local function ok(data)
+    return { ok = true, data = data }
+end
+
+local function fail(message)
+    return { ok = false, error = tostring(message) }
+end
+
+local function cmdStatus()
+    local uiOk, uiErr = CS.Witch.UI.Automation.RuntimeUiAutomationService.TryGetContext("")
+    local sceneOk = false
+    local sceneErr = ""
+    local battleOk = false
+    local battleErr = ""
+
+    pcall(function()
+        local _, _, _, err = CS.Witch.UI.Automation.RuntimeSceneAutomationService.TryGetContext(nil, nil, "")
+        sceneOk = true
+        sceneErr = err or ""
+    end)
+
+    pcall(function()
+        local _, _, err = CS.Witch.UI.Automation.RuntimeBattleAutomationService.TryGetContext(nil, "")
+        battleOk = true
+        battleErr = err or ""
+    end)
+
+    return ok({
+        bridge = "CodexMcpBridge",
+        version = "0.1.0",
+        url = BRIDGE_URL,
+        uiContext = uiOk,
+        uiError = uiErr or "",
+        sceneContext = sceneOk,
+        sceneError = sceneErr,
+        battleContext = battleOk,
+        battleError = battleErr
+    })
+end
+
+local function cmdUiSnapshot(params)
+    local request = CS.Witch.UI.Automation.RuntimeUiSnapshotRequest.New()
+    request.IncludeHidden = tokenBool(params, "includeHidden", false)
+    request.Scope = tokenString(params, "scope", "")
+    return ok(CS.Witch.UI.Automation.RuntimeUiAutomationService.CaptureSnapshot(request))
+end
+
+local function cmdUiInteract(params)
+    local request = CS.Witch.UI.Automation.RuntimeUiInteractionRequest.New()
+    request.Action = tokenString(params, "action", "click")
+    request.Selector = makeUiSelector(tokenObject(params, "selector"))
+    request.TargetSelector = makeUiSelector(tokenObject(params, "targetSelector"))
+    request.TargetPoint = makePoint(tokenObject(params, "targetPoint"))
+    request.Text = tokenString(params, "text", nil)
+    request.Submit = tokenBool(params, "submit", false)
+    request.RequireClickable = tokenBool(params, "requireClickable", true)
+    request.Button = tokenString(params, "button", "left")
+    request.DeltaX = tokenNumber(params, "deltaX", 0)
+    request.DeltaY = tokenNumber(params, "deltaY", 0)
+    request.Steps = tokenNumber(params, "steps", 12)
+    request.FramesPerStep = tokenNumber(params, "framesPerStep", 1)
+    request.IncludePostSnapshot = tokenBool(params, "includePostSnapshot", true)
+    return ok(tryAwait(CS.Witch.UI.Automation.RuntimeUiAutomationService.InteractAsync(request)))
+end
+
+local function cmdUiWait(params)
+    local waitRequest = CS.Witch.UI.Automation.RuntimeUiWaitRequest.New()
+    waitRequest.Condition = tokenString(params, "condition", "")
+    waitRequest.Selector = makeUiSelector(tokenObject(params, "selector"))
+    waitRequest.WindowName = tokenString(params, "windowName", nil)
+    waitRequest.ExpectedText = tokenString(params, "expectedText", nil)
+
+    local snapshotRequest = CS.Witch.UI.Automation.RuntimeUiSnapshotRequest.New()
+    snapshotRequest.IncludeHidden = true
+    snapshotRequest.Scope = ""
+    local snapshot = CS.Witch.UI.Automation.RuntimeUiAutomationService.CaptureSnapshot(snapshotRequest)
+    return ok(CS.Witch.UI.Automation.RuntimeUiAutomationService.EvaluateWaitCondition(snapshot, waitRequest))
+end
+
+local function cmdSceneSnapshot(params)
+    local request = CS.Witch.UI.Automation.RuntimeSceneSnapshotRequest.New()
+    request.IncludeInactive = tokenBool(params, "includeInactive", false)
+    request.OnlyInteractive = tokenBool(params, "onlyInteractive", true)
+    return ok(CS.Witch.UI.Automation.RuntimeSceneAutomationService.CaptureSnapshot(request))
+end
+
+local function cmdSceneRaycast(params)
+    local request = CS.Witch.UI.Automation.RuntimeSceneRaycastRequest.New()
+    request.X = tokenNumber(params, "x", 0)
+    request.Y = tokenNumber(params, "y", 0)
+    request.Distance = tokenNumber(params, "distance", 1000)
+    return ok(CS.Witch.UI.Automation.RuntimeSceneAutomationService.Raycast(request))
+end
+
+local function cmdSceneInteract(params)
+    local request = CS.Witch.UI.Automation.RuntimeSceneInteractionRequest.New()
+    request.Action = tokenString(params, "action", "click")
+    request.Selector = makeSceneSelector(tokenObject(params, "selector"))
+    request.TargetSelector = makeSceneSelector(tokenObject(params, "targetSelector"))
+    request.ScreenPoint = makePoint(tokenObject(params, "screenPoint"))
+    request.TargetPoint = makePoint(tokenObject(params, "targetPoint"))
+    request.Button = tokenString(params, "button", "left")
+    request.ScrollX = tokenNumber(params, "scrollX", 0)
+    request.ScrollY = tokenNumber(params, "scrollY", 0)
+    request.Steps = tokenNumber(params, "steps", 12)
+    request.FramesPerStep = tokenNumber(params, "framesPerStep", 1)
+    return ok(tryAwait(CS.Witch.UI.Automation.RuntimeSceneAutomationService.InteractAsync(request)))
+end
+
+local function cmdLegalActions()
+    return ok(CS.Witch.UI.Automation.RuntimeGameplayAutomationService.GetLegalActions())
+end
+
+local function cmdPerformAction(params)
+    local request = CS.Witch.UI.Automation.RuntimePerformActionRequest.New()
+    request.ActionId = tokenString(params, "actionId", "")
+    return ok(tryAwait(CS.Witch.UI.Automation.RuntimeGameplayAutomationService.PerformActionAsync(request)))
+end
+
+local function cmdPlayCard(params)
+    local request = CS.Witch.UI.Automation.RuntimePlayCardRequest.New()
+    setNullableInt(request, "CardInstanceId", tokenNumber(params, "cardInstanceId", nil))
+    setString(request, "CardId", tokenString(params, "cardId", nil))
+    setNullableInt(request, "CardIndex", tokenNumber(params, "cardIndex", nil))
+    setNullableInt(request, "TargetInstanceId", tokenNumber(params, "targetInstanceId", nil))
+    setString(request, "TargetName", tokenString(params, "targetName", nil))
+    setNullableInt(request, "TargetIndex", tokenNumber(params, "targetIndex", nil))
+    return ok(tryAwait(CS.Witch.UI.Automation.RuntimeBattleAutomationService.PlayCardAsync(request)))
+end
+
+local handlers = {
+    ["status"] = cmdStatus,
+    ["ui.snapshot"] = cmdUiSnapshot,
+    ["ui.interact"] = cmdUiInteract,
+    ["ui.wait"] = cmdUiWait,
+    ["scene.snapshot"] = cmdSceneSnapshot,
+    ["scene.raycast"] = cmdSceneRaycast,
+    ["scene.interact"] = cmdSceneInteract,
+    ["game.legal_actions"] = cmdLegalActions,
+    ["game.perform_action"] = cmdPerformAction,
+    ["battle.play_card"] = cmdPlayCard
+}
+
+local function runCommand(command, params)
+    local handler = handlers[command]
+    if handler == nil then
+        return fail("Unknown command: " .. tostring(command))
+    end
+    local okCall, result = pcall(function()
+        return handler(params)
+    end)
+    if okCall then
+        return result
+    end
+    return fail(result)
+end
+
+local function enqueue(command, params)
+    local request = {
+        id = nextRequestId,
+        command = command,
+        params = params,
+        done = CS.System.Threading.ManualResetEvent(false),
+        response = nil
+    }
+    nextRequestId = nextRequestId + 1
+    queue[#queue + 1] = request
+    return request
+end
+
+local function processQueue()
+    while #queue > 0 do
+        local request = table.remove(queue, 1)
+        request.response = runCommand(request.command, request.params)
+        request.done:Set()
+    end
+end
+
+local function readRequestBody(context)
+    local reader = CS.System.IO.StreamReader(context.Request.InputStream, context.Request.ContentEncoding)
+    local body = reader:ReadToEnd()
+    reader:Close()
+    return body
+end
+
+local function writeResponse(context, statusCode, body)
+    local bytes = CS.System.Text.Encoding.UTF8:GetBytes(body)
+    context.Response.StatusCode = statusCode
+    context.Response.ContentType = "application/json; charset=utf-8"
+    context.Response.ContentLength64 = bytes.Length
+    context.Response.OutputStream:Write(bytes, 0, bytes.Length)
+    context.Response.OutputStream:Close()
+end
+
+local function handleHttpContext(context)
+    local okHandle, err = pcall(function()
+        local path = tostring(context.Request.Url.AbsolutePath)
+        if path == "/health" then
+            writeResponse(context, 200, jsonEncode({ ok = true, bridge = "CodexMcpBridge" }))
+            return
+        end
+
+        if path ~= "/command" or tostring(context.Request.HttpMethod) ~= "POST" then
+            writeResponse(context, 404, jsonEncode({ ok = false, error = "Use POST /command." }))
+            return
+        end
+
+        local payload = jsonDecode(readRequestBody(context))
+        local command = tokenString(payload, "command", "")
+        local params = tokenObject(payload, "params")
+        local request = enqueue(command, params)
+        request.done:WaitOne()
+        writeResponse(context, 200, jsonEncode(request.response))
+    end)
+
+    if not okHandle then
+        pcall(function()
+            writeResponse(context, 500, jsonEncode({ ok = false, error = tostring(err) }))
+        end)
+    end
+end
+
+local function listenLoop()
+    while running do
+        local okContext, context = pcall(function()
+            return listener:GetContext()
+        end)
+        if okContext and context ~= nil then
+            CS.System.Threading.ThreadPool.QueueUserWorkItem(function()
+                handleHttpContext(context)
+            end)
+        elseif running then
+            logError("HttpListener GetContext failed: " .. tostring(context))
+        end
+    end
+end
+
+local function startBridge()
+    if running then
+        return
+    end
+
+    local okStart, err = pcall(function()
+        listener = CS.System.Net.HttpListener()
+        listener.Prefixes:Add(BRIDGE_URL)
+        listener:Start()
+        running = true
+        listenerThread = CS.System.Threading.Thread(CS.System.Threading.ThreadStart(listenLoop))
+        listenerThread.IsBackground = true
+        listenerThread:Start()
+    end)
+
+    if okStart then
+        log("listening on " .. BRIDGE_URL)
+    else
+        running = false
+        logError("failed to start listener: " .. tostring(err))
+    end
+end
+
+local function stopBridge()
+    running = false
+    if listener ~= nil then
+        pcall(function()
+            listener:Stop()
+            listener:Close()
+        end)
+    end
+    listener = nil
+end
+
+local function addAfterHookSafe(modConfig, methodName, callback)
+    local okHook, err = pcall(function()
+        modConfig:AddMethodHookAfter(methodName, callback)
+    end)
+    if not okHook then
+        logError("Failed to register hook " .. tostring(methodName) .. ": " .. tostring(err))
+    end
+end
+
+function ModConfig:Setup()
+    startBridge()
+
+    addAfterHookSafe(self, "UIManager.CheckUI", function(ctx)
+        processQueue()
+    end)
+
+    addAfterHookSafe(self, "PopUpTextUI.Update", function(ctx)
+        processQueue()
+    end)
+
+    addAfterHookSafe(self, "SettingUI.OnDestroy", function(ctx)
+        processQueue()
+    end)
+
+    log("runtime hooks registered")
+end
+
+function ModConfig:OnDestroy()
+    stopBridge()
+end
+
+log("loaded")

@@ -1,0 +1,12 @@
+{
+  "ModName": "CodexMcpBridge",
+  "ModVersion": "0.9.0",
+  "ModAuthor": "Codex",
+  "ModDescription": "Local HTTP bridge exposing Witch.UI.Automation runtime controls and fallback input for Codex MCP.",
+  "IconPath": "Icon.png",
+  "Enabled": true,
+  "Dependencies": null,
+  "WorkshopVisibility": "Private",
+  "PublishedFileId": "",
+  "MustSame": true
+}

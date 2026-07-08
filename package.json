@@ -1,0 +1,21 @@
+{
+  "name": "witch-journey-mcp",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Codex MCP server and in-game bridge for Witch's Apocalyptic Journey automation.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "witch-journey-mcp": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "selftest": "node selftest.mjs",
+    "calltest": "node calltest.mjs",
+    "orchestration-test": "node orchestration-test.mjs",
+    "e2e-fake": "node verify-end-to-end-fake.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
