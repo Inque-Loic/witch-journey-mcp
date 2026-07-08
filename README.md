@@ -1,62 +1,62 @@
-# Witch Journey MCP
+# 魔女终末旅途 MCP
 
-Local MCP server plus in-game bridge for controlling *Witch's Apocalyptic Journey* through Codex.
+这是一个用于 *魔女终末旅途* 的本地 MCP 工具包，让 Codex 可以通过游戏内自动化接口接管游戏操作，而不是盲猜屏幕点击。
 
-The tool has two parts:
+工具包分为两部分：
 
-- `server.mjs`: MCP stdio server used by Codex.
-- `bridge-mod/`: `CodexMcpBridge` game mod. It opens a localhost HTTP bridge and calls the game's `Witch.UI.Automation.*` runtime surfaces.
+- `server.mjs`：给 Codex 使用的 MCP stdio 服务器。
+- `bridge-mod/`：游戏内 `CodexMcpBridge` 模组。它会在本机开启 HTTP 桥接服务，并调用游戏里的 `Witch.UI.Automation.*` 运行时接口。
 
-The default bridge URL is `http://127.0.0.1:18171`.
+默认桥接地址是 `http://127.0.0.1:18171`。
 
-## Install
+## 安装
 
-1. Copy `bridge-mod/` to one or both game mod locations, renaming the copied folder to `CodexMcpBridge`:
+1. 把 `bridge-mod/` 复制到游戏 Mod 目录，并把复制后的文件夹命名为 `CodexMcpBridge`。根据你的游戏安装情况，复制到下面一个或两个位置：
 
    ```powershell
-   Copy-Item -Recurse -Force .\bridge-mod "<GAME_ROOT>\Mods\CodexMcpBridge"
-   Copy-Item -Recurse -Force .\bridge-mod "<GAME_ROOT>\Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge"
+   Copy-Item -Recurse -Force .\bridge-mod "<游戏根目录>\Mods\CodexMcpBridge"
+   Copy-Item -Recurse -Force .\bridge-mod "<游戏根目录>\Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge"
    ```
 
-2. Add the MCP server to your Codex config:
+2. 在 Codex 配置里加入 MCP server：
 
    ```toml
    [mcp_servers.witchJourney]
    command = 'node'
-   args = ["<PATH_TO_THIS_REPO>\\server.mjs"]
+   args = ["<本仓库路径>\\server.mjs"]
    startup_timeout_sec = 20
 
    [mcp_servers.witchJourney.env]
    WITCH_JOURNEY_BRIDGE_URL = 'http://127.0.0.1:18171'
    ```
 
-3. Restart the game.
+3. 重启游戏。
 
-4. Check the bridge:
+4. 检查游戏内桥是否可用：
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\check-bridge.ps1
    ```
 
-## Tools
+## 工具能力
 
-The MCP server exposes 45 tools covering:
+当前 MCP server 暴露 45 个工具，覆盖：
 
-- bridge status and wait/restart orchestration
-- runtime diagnostics and artifact freshness checks
-- readiness and takeover audits
-- UI snapshots and UI interactions
-- scene snapshots, scene interaction, and raycasts
-- screen capture, window focus, and fallback OS input
-- legal gameplay actions, card play, legal-action matching, and bounded auto-drive
-- runtime type/object inspection, component member enumeration, dry-run/confirmed method calls, dry-run/confirmed member writes, and reviewed static runtime invocation
-- observe-plan-act helpers such as `witch_state_summary`, `witch_plan_next`, `witch_execute_plan`, `witch_takeover_step`, and `witch_takeover_drive`
+- 桥接状态检查、等待、重启编排
+- 本地运行时诊断、Mod 文件检查、桥文件新旧检查
+- 接管前准备、readiness 检查、完整接管审计
+- UI 快照、UI 点击和交互
+- 场景对象快照、场景交互、raycast
+- 截图、窗口聚焦、本地 OS 输入兜底
+- 游戏合法动作、出牌、合法动作匹配、有边界的自动驾驶
+- 运行时类型/对象检查、组件成员枚举、组件方法 dry-run/确认调用、组件属性 dry-run/确认写入、静态运行时方法调用
+- 观察-规划-执行辅助，例如 `witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
 
-Use dry-run first for takeover loops, component calls, component writes, and static runtime invocation.
+建议对接管循环、组件调用、组件写入、静态运行时调用先使用 dry-run，确认目标和参数后再执行真实动作。
 
-## Verification
+## 验证
 
-Run local protocol tests without the real game bridge:
+不启动真实游戏桥时，可以运行本地协议测试：
 
 ```powershell
 npm run selftest
@@ -65,34 +65,34 @@ npm run orchestration-test
 npm run e2e-fake
 ```
 
-Run against a live game after installing the bridge mod and restarting:
+安装桥接 Mod 并重启游戏后，可以运行真实游戏验证：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\wait-and-verify.ps1 -TimeoutSec 180 -IntervalSec 2
 ```
 
-For a full restart plus wait/audit/verification chain:
+如果希望脚本自动重启游戏、等待桥上线、执行审计和完整验证：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\restart-and-verify.ps1 -ConfirmRestart RESTART_WITCH_GAME
 ```
 
-`restart-and-verify.ps1` can close and restart the game. It refuses to do so unless passed `-ConfirmRestart RESTART_WITCH_GAME`.
+`restart-and-verify.ps1` 会关闭并重启游戏。为了避免误操作，它必须传入 `-ConfirmRestart RESTART_WITCH_GAME` 才会执行。
 
-## Bridge Build
+## 构建桥接 DLL
 
-`bridge-mod/Scripts/Entry.dll` is included. To rebuild it from `bridge-mod/Dev/Entry.cs`, copy or mirror the bridge source into the game mod folder and run:
+仓库已经包含 `bridge-mod/Scripts/Entry.dll`。如果修改了 `bridge-mod/Dev/Entry.cs` 并希望重新构建 DLL，需要把桥源码复制或同步到游戏 Mod 目录，然后运行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\compile-bridge.ps1
 ```
 
-The build script uses managed assemblies from the installed game, so it must be run from a checkout located under the game root unless you adapt the paths.
+构建脚本会引用已安装游戏里的 managed assemblies，因此默认要求仓库位于游戏根目录下，或者你自行调整脚本里的路径。
 
-## Safety
+## 安全设计
 
-- The bridge binds to localhost only.
-- Game process restart requires an explicit confirmation token.
-- Component calls and component writes default to dry-run and require confirmation strings to execute.
-- Action-policy gates can allow or deny specific legal action ids, kinds, or labels before execution.
+- 桥接服务只绑定本机 localhost。
+- 重启游戏进程需要显式确认 token。
+- 组件方法调用和组件属性写入默认是 dry-run，真实执行需要确认字符串。
+- 动作策略可以按合法动作 id、kind、label 做 allow/deny，避免自动执行未审核动作。
 
