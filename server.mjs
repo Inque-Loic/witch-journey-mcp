@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 const BRIDGE_URL = process.env.WITCH_JOURNEY_BRIDGE_URL || "http://127.0.0.1:18171";
 const REQUEST_TIMEOUT_MS = Number(process.env.WITCH_JOURNEY_TIMEOUT_MS || 15000);
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
-const WORKSPACE_ROOT = path.resolve(SERVER_DIR, "..", "..");
+const WORKSPACE_ROOT = process.env.WITCH_JOURNEY_GAME_ROOT
+  ? path.resolve(process.env.WITCH_JOURNEY_GAME_ROOT)
+  : path.resolve(SERVER_DIR, "..", "..");
 const PLAYER_LOG_PATH = path.join(os.homedir(), "AppData", "LocalLow", "MeowAlive", "Witch's Apocalyptic Journey", "Player.log");
 const BRIDGE_MARKERS = [
   "0.9.0",

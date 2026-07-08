@@ -28,11 +28,22 @@
 
    [mcp_servers.witchJourney.env]
    WITCH_JOURNEY_BRIDGE_URL = 'http://127.0.0.1:18171'
+   WITCH_JOURNEY_GAME_ROOT = '<游戏根目录>'
    ```
 
-3. 重启游戏。
+   `WITCH_JOURNEY_GAME_ROOT` 用来告诉 MCP server 游戏安装在哪里，例如：
 
-4. 检查游戏内桥是否可用：
+   ```toml
+   WITCH_JOURNEY_GAME_ROOT = 'D:\Steam\steamapps\common\Witch''s Apocalyptic Journey'
+   ```
+
+   如果你把本仓库放在 `<游戏根目录>\_mcp\witch-journey-mcp`，可以不配置 `WITCH_JOURNEY_GAME_ROOT`，工具会按旧布局自动推断游戏根目录。除此之外，建议始终显式配置这个环境变量，这样仓库 clone 到桌面、文档目录或其他位置也能使用。
+
+3. 重启 Codex，让新的 MCP 配置生效。
+
+4. 重启游戏。
+
+5. 检查游戏内桥是否可用：
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\check-bridge.ps1
@@ -89,10 +100,16 @@ powershell -ExecutionPolicy Bypass -File .\tools\compile-bridge.ps1
 
 构建脚本会引用已安装游戏里的 managed assemblies，因此默认要求仓库位于游戏根目录下，或者你自行调整脚本里的路径。
 
+如果仓库不在游戏根目录下，先设置 `WITCH_JOURNEY_GAME_ROOT` 再运行构建脚本：
+
+```powershell
+$env:WITCH_JOURNEY_GAME_ROOT = "<游戏根目录>"
+powershell -ExecutionPolicy Bypass -File .\tools\compile-bridge.ps1
+```
+
 ## 安全设计
 
 - 桥接服务只绑定本机 localhost。
 - 重启游戏进程需要显式确认 token。
 - 组件方法调用和组件属性写入默认是 dry-run，真实执行需要确认字符串。
 - 动作策略可以按合法动作 id、kind、label 做 allow/deny，避免自动执行未审核动作。
-

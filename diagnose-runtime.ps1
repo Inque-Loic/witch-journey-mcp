@@ -1,6 +1,10 @@
 $ErrorActionPreference = "Continue"
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$root = if ([string]::IsNullOrWhiteSpace($env:WITCH_JOURNEY_GAME_ROOT)) {
+  Resolve-Path (Join-Path $PSScriptRoot "..\..")
+} else {
+  Resolve-Path $env:WITCH_JOURNEY_GAME_ROOT
+}
 $bridgeUrl = $env:WITCH_JOURNEY_BRIDGE_URL
 if ([string]::IsNullOrWhiteSpace($bridgeUrl)) {
   $bridgeUrl = "http://127.0.0.1:18171"

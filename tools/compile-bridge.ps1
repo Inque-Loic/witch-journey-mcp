@@ -1,6 +1,10 @@
 $ErrorActionPreference = "Stop"
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
+$root = if ([string]::IsNullOrWhiteSpace($env:WITCH_JOURNEY_GAME_ROOT)) {
+  Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
+} else {
+  Resolve-Path $env:WITCH_JOURNEY_GAME_ROOT
+}
 $managed = Join-Path $root "Witch's Apocalyptic Journey_Data\Managed"
 $source = Join-Path $root "Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge\Dev\Entry.cs"
 $outDir = Join-Path $root "Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge\Scripts"
