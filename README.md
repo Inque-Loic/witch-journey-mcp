@@ -1,10 +1,12 @@
 # 魔女终末旅途 MCP
 
-这是一个用于 *魔女终末旅途* 的本地 MCP 工具包，让 Codex 可以通过游戏内自动化接口接管游戏操作，而不是盲猜屏幕点击。
+这是一个用于 *魔女终末旅途* 的本地 MCP 工具包，让支持 MCP 的客户端可以通过游戏内自动化接口接管游戏操作，而不是盲猜屏幕点击。
+
+它不是 Codex 专用工具。`server.mjs` 是标准 MCP stdio server，理论上可以被 Codex、Claude Desktop、Claude Code、Cursor、Windsurf 或你自己写的 MCP client 启动和调用。Codex 只是当前仓库已经验证过的接入方式之一。
 
 工具包分为两部分：
 
-- `server.mjs`：给 Codex 使用的 MCP stdio 服务器。
+- `server.mjs`：标准 MCP stdio 服务器，供支持 MCP 的客户端使用。
 - `bridge-mod/`：游戏内 `CodexMcpBridge` 模组。它会在本机开启 HTTP 桥接服务，并调用游戏里的 `Witch.UI.Automation.*` 运行时接口。
 
 默认桥接地址是 `http://127.0.0.1:18171`。
@@ -18,7 +20,7 @@
    Copy-Item -Recurse -Force .\bridge-mod "<游戏根目录>\Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge"
    ```
 
-2. 在 Codex 配置里加入 MCP server：
+2. 在 MCP 客户端里加入这个 server。Codex 配置示例：
 
    ```toml
    [mcp_servers.witchJourney]
@@ -39,7 +41,20 @@
 
    如果你把本仓库放在 `<游戏根目录>\_mcp\witch-journey-mcp`，可以不配置 `WITCH_JOURNEY_GAME_ROOT`，工具会按旧布局自动推断游戏根目录。除此之外，建议始终显式配置这个环境变量，这样仓库 clone 到桌面、文档目录或其他位置也能使用。
 
-3. 重启 Codex，让新的 MCP 配置生效。
+   其他 MCP 客户端通常也会使用同样的核心信息，只是配置文件格式不同：
+
+   ```json
+   {
+     "command": "node",
+     "args": ["<本仓库路径>/server.mjs"],
+     "env": {
+       "WITCH_JOURNEY_BRIDGE_URL": "http://127.0.0.1:18171",
+       "WITCH_JOURNEY_GAME_ROOT": "<游戏根目录>"
+     }
+   }
+   ```
+
+3. 重启你的 MCP 客户端，让新的 server 配置生效。
 
 4. 重启游戏。
 
