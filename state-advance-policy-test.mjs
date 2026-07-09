@@ -173,10 +173,12 @@ await waitForMessage(1);
 send(2, "tools/call", { name: "witch_no_mouse_evidence_plan", arguments: { includePolicyTests: true } });
 send(3, "tools/call", { name: "witch_no_mouse_state_advance_drive", arguments: { dryRun: true, maxSteps: 1, maxProbesPerStep: 0, waitAfterAdvanceMs: 0, includePlan: false, allowPaths: ["option2"] } });
 send(4, "tools/call", { name: "witch_no_mouse_state_advance_drive", arguments: { dryRun: true, maxSteps: 1, maxProbesPerStep: 0, waitAfterAdvanceMs: 0, includePlan: false, denyPaths: ["option1", "option2"] } });
+send(5, "tools/call", { name: "witch_no_mouse_restart_advance_audit", arguments: { includePreview: true, includePlan: false, allowPaths: ["option2"] } });
 
 await waitForMessage(2);
 await waitForMessage(3);
 await waitForMessage(4);
+await waitForMessage(5);
 child.kill();
 await once(child, "exit");
 bridge.close();
@@ -193,6 +195,7 @@ function textResult(id) {
 const plan = textResult(2);
 const allowOption2 = textResult(3);
 const denyOptions = textResult(4);
+const restartAdvancePreview = textResult(5);
 const candidateIds = (plan.stateAdvanceCandidates || []).map(item => item.operation?.id || "");
 
 if (candidateIds.length !== 2 || candidateIds.some(id => !id.includes(":click")) || candidateIds.some(id => /submit|hover|scroll|drag|TopBarUI|Description|ExitGame/i.test(id))) {
@@ -203,6 +206,9 @@ if (allowOption2.reason !== "dry_run_planned" || !allowOption2.steps?.[0]?.selec
 }
 if (denyOptions.reason !== "state_advance_policy_filtered" || denyOptions.blockedCandidates?.length !== 2 || denyOptions.steps?.[0]?.selectedCandidate != null) {
   throw new Error(`denyPaths did not block option candidates ${JSON.stringify(denyOptions, null, 2)}`);
+}
+if (restartAdvancePreview.reason !== "restart_confirmation_required" || restartAdvancePreview.preview?.stateAdvanceCandidates?.length !== 1 || !restartAdvancePreview.preview.stateAdvanceCandidates[0].operation?.id?.includes("option2") || restartAdvancePreview.preview?.blockedStateAdvanceCandidates?.length !== 1 || restartAdvancePreview.preview?.plannedCalls?.restart?.arguments?.allowPaths?.[0] !== "option2") {
+  throw new Error(`restart advance preview did not preserve state policy ${JSON.stringify(restartAdvancePreview, null, 2)}`);
 }
 
 console.log("ok: state advance policy");
