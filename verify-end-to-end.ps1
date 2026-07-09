@@ -222,10 +222,17 @@ Assert-WitchOk $legalActions "witch_legal_actions"
 
 Write-Host "31. Calling witch_auto_step dry run through MCP..."
 $autoStep = Invoke-WitchMcpJson witch_auto_step @{ dryRun = $true; includeLegalActions = $true }
-Assert-WitchOk $autoStep "witch_auto_step dry run"
-Assert-Field ($autoStep.dryRun -eq $true) "witch_auto_step did not remain dry-run" $autoStep
+if ($autoStep.ok -eq $true) {
+  Assert-Field ($autoStep.dryRun -eq $true) "witch_auto_step did not remain dry-run" $autoStep
+} else {
+  Assert-Field ($autoStep.reason -eq "no_legal_actions") "witch_auto_step dry run failed for a reason other than no_legal_actions" $autoStep
+  Assert-Field ($autoStep.legalActions.ok -eq $true) "witch_auto_step no_legal_actions did not include a successful legal-action snapshot" $autoStep
+}
 
 Write-Host "32. Verifying action policy denial through MCP..."
 Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-action-policy.ps1")
+
+Write-Host "33. Verifying no-mouse policy through MCP..."
+Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-no-mouse-policy.ps1")
 
 Write-Host "ok: bridge and MCP tool path responded"

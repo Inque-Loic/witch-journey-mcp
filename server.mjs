@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const BRIDGE_URL = process.env.WITCH_JOURNEY_BRIDGE_URL || "http://127.0.0.1:18171";
 const REQUEST_TIMEOUT_MS = Number(process.env.WITCH_JOURNEY_TIMEOUT_MS || 15000);
+const DEFAULT_NO_MOUSE = !["0", "false", "False", "FALSE", "no", "No", "NO"].includes(String(process.env.WITCH_JOURNEY_NO_MOUSE || "true"));
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = process.env.WITCH_JOURNEY_GAME_ROOT
   ? path.resolve(process.env.WITCH_JOURNEY_GAME_ROOT)
@@ -590,7 +591,7 @@ const tools = [
   },
   {
     name: "witch_input_mouse",
-    description: "Fallback OS-level mouse input using game-window coordinates. Uses the in-game bridge when available and local OS input when offline. Prefer UI or scene interaction tools first.",
+    description: "Fallback OS-level mouse input using game-window coordinates. Disabled by default in no-mouse mode. Prefer legal actions, UI automation, scene automation, or runtime calls.",
     inputSchema: {
       type: "object",
       properties: {
@@ -604,7 +605,8 @@ const tools = [
         steps: { type: "integer", default: 12 },
         delta: { type: "integer" },
         scrollY: { type: "integer" },
-        focus: { type: "boolean", default: true }
+        focus: { type: "boolean", default: true },
+        noMouse: { type: "boolean", default: true, description: "When true, refuse OS-level mouse input. Defaults to WITCH_JOURNEY_NO_MOUSE, which is true unless explicitly disabled." }
       },
       additionalProperties: false
     }
@@ -1013,6 +1015,10 @@ async function callBridge(command, params) {
 }
 
 async function callBridgeWithLocalFallback(command, params) {
+  const mouseGuard = rejectMouseCommand(command, params);
+  if (mouseGuard) {
+    return mouseGuard;
+  }
   try {
     return await callBridge(command, params);
   } catch (error) {
@@ -1021,6 +1027,31 @@ async function callBridgeWithLocalFallback(command, params) {
     }
     return localOsCommand(command, params || {}, error);
   }
+}
+
+function noMouseEnabled(args) {
+  if (args?.noMouse === true) return true;
+  if (args?.noMouse === false) return false;
+  return DEFAULT_NO_MOUSE;
+}
+
+function rejectMouseCommand(command, params) {
+  if (command !== "input.mouse" || !noMouseEnabled(params || {})) {
+    return null;
+  }
+  return {
+    ok: false,
+    reason: "mouse_forbidden",
+    command,
+    noMouse: true,
+    message: "OS-level mouse input is disabled. Use witch_legal_actions/witch_perform_action_match, witch_ui_interact, witch_scene_interact, or runtime tools instead.",
+    alternatives: [
+      "witch_perform_action_match",
+      "witch_ui_interact",
+      "witch_scene_interact",
+      "witch_runtime_invoke_static"
+    ]
+  };
 }
 
 async function handleRequest(request) {
@@ -1530,6 +1561,7 @@ function localCapabilities() {
     bridgeUrl: BRIDGE_URL,
     workspaceRoot: WORKSPACE_ROOT,
     requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    noMouseDefault: DEFAULT_NO_MOUSE,
     tools: tools.map(tool => ({
       name: tool.name,
       description: tool.description
@@ -1562,6 +1594,21 @@ function localCapabilities() {
     uiActions: ["click", "double_click", "hover", "set_text", "submit", "scroll", "drag"],
     sceneActions: ["click", "hover", "drag", "scroll"],
     fallbackInputActions: ["focus", "key", "text", "mouse"],
+    noMouseMode: {
+      enabledByDefault: DEFAULT_NO_MOUSE,
+      forbiddenCommands: ["input.mouse"],
+      allowedNoMouseInteractionTools: [
+        "witch_perform_action_match",
+        "witch_auto_step",
+        "witch_ui_interact",
+        "witch_ui_click_label",
+        "witch_scene_interact",
+        "witch_runtime_component_call",
+        "witch_runtime_component_set",
+        "witch_runtime_invoke_static"
+      ],
+      override: "Set WITCH_JOURNEY_NO_MOUSE=0 or pass noMouse:false to witch_input_mouse only when OS mouse fallback is explicitly desired."
+    },
     uiWaitConditions: ["node_exists", "window_exists", "text_contains", "layout_changed", "node_gone"],
     selectorStrategy: [
       "Prefer stable nodeId or instanceId from snapshots.",
@@ -1579,7 +1626,8 @@ function localCapabilities() {
       "Use witch_takeover_step for a single evidence-rich takeover loop that waits for the bridge, focuses the window, captures visual evidence, plans, and optionally acts.",
       "Use witch_takeover_drive for a bounded multi-step takeover loop after reviewing stop conditions.",
       "Use witch_window_focus before fallback input when focus is uncertain.",
-      "Use witch_input_key, witch_input_text, and witch_input_mouse only as fallback controls when typed game/UI/scene automation is insufficient.",
+      "No-mouse mode is enabled by default; use legal actions, UI automation, scene automation, and runtime tools instead of witch_input_mouse.",
+      "Use witch_input_key and witch_input_text only as fallback controls when typed game/UI/scene automation is insufficient. witch_input_mouse is refused unless noMouse is explicitly disabled.",
       "Use witch_runtime_inspect to discover loaded game automation/debug surfaces when typed tools do not cover a needed operation.",
       "Use witch_runtime_objects to inspect Unity GameObjects/components when UI, scene, or legal-action snapshots do not expose enough context.",
       "Use witch_runtime_object_detail to read public component properties/fields for one Unity object after locating it with witch_runtime_objects.",
@@ -1818,10 +1866,10 @@ async function verifyLocalOsFallbackControl(args) {
   const inputSurface = [
     "witch_window_focus",
     "witch_input_key",
-    "witch_input_text",
-    "witch_input_mouse"
+    "witch_input_text"
   ].every(name => tools.some(tool => tool.name === name));
-  addCheck(checks, "local_input_tool_surface", inputSurface, inputSurface ? "Fallback input tools are exposed through MCP." : "One or more fallback input tools are missing from MCP.");
+  addCheck(checks, "local_input_tool_surface", inputSurface, inputSurface ? "Non-mouse fallback input tools are exposed through MCP." : "One or more non-mouse fallback input tools are missing from MCP.");
+  addCheck(checks, "no_mouse_policy", DEFAULT_NO_MOUSE === true, DEFAULT_NO_MOUSE ? "OS mouse fallback is disabled by default." : "OS mouse fallback is not disabled by default.");
 
   return {
     ok: checks.every(check => check.ok),
@@ -3094,6 +3142,9 @@ async function executeRecommendedCall(call, options) {
       }
       return callBridgeWithLocalFallback("input.text", args);
     case "witch_input_mouse":
+      if (noMouseEnabled(args)) {
+        return rejectMouseCommand("input.mouse", args);
+      }
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
       }

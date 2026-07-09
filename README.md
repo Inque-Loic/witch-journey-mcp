@@ -11,6 +11,8 @@
 
 默认桥接地址是 `http://127.0.0.1:18171`。
 
+默认启用无鼠标模式：MCP 会拒绝 `witch_input_mouse` 和底层 `input.mouse`，自动接管会优先使用游戏合法动作、UI 自动化、场景自动化和运行时调用。
+
 ## 安装
 
 1. 把 `bridge-mod/` 复制到游戏 Mod 目录，并把复制后的文件夹命名为 `CodexMcpBridge`。根据你的游戏安装情况，复制到下面一个或两个位置：
@@ -31,6 +33,7 @@
    [mcp_servers.witchJourney.env]
    WITCH_JOURNEY_BRIDGE_URL = 'http://127.0.0.1:18171'
    WITCH_JOURNEY_GAME_ROOT = '<游戏根目录>'
+   WITCH_JOURNEY_NO_MOUSE = 'true'
    ```
 
    `WITCH_JOURNEY_GAME_ROOT` 用来告诉 MCP server 游戏安装在哪里，例如：
@@ -41,6 +44,8 @@
 
    如果你把本仓库放在 `<游戏根目录>\_mcp\witch-journey-mcp`，可以不配置 `WITCH_JOURNEY_GAME_ROOT`，工具会按旧布局自动推断游戏根目录。除此之外，建议始终显式配置这个环境变量，这样仓库 clone 到桌面、文档目录或其他位置也能使用。
 
+   `WITCH_JOURNEY_NO_MOUSE` 默认为 `true`，表示禁止 OS 级鼠标兜底。只有在你明确需要旧的鼠标 fallback 时，才设置为 `0` 或 `false`。
+
    其他 MCP 客户端通常也会使用同样的核心信息，只是配置文件格式不同：
 
    ```json
@@ -49,7 +54,8 @@
      "args": ["<本仓库路径>/server.mjs"],
      "env": {
        "WITCH_JOURNEY_BRIDGE_URL": "http://127.0.0.1:18171",
-       "WITCH_JOURNEY_GAME_ROOT": "<游戏根目录>"
+       "WITCH_JOURNEY_GAME_ROOT": "<游戏根目录>",
+       "WITCH_JOURNEY_NO_MOUSE": "true"
      }
    }
    ```
@@ -80,6 +86,17 @@
 
 建议对接管循环、组件调用、组件写入、静态运行时调用先使用 dry-run，确认目标和参数后再执行真实动作。
 
+## 无鼠标模式
+
+MCP 默认不使用 OS 鼠标。也就是说：
+
+- `witch_perform_action_match` / `witch_auto_step` / `witch_auto_drive` 走游戏自己的合法动作层。
+- `witch_ui_interact` 和 `witch_ui_click_label` 走游戏内 UI 自动化，即使 action 名叫 `click`，也不是移动 Windows 鼠标。
+- `witch_scene_interact` 走游戏内场景自动化，也不是移动 Windows 鼠标。
+- `witch_input_mouse` 和 `witch_bridge_command` 里的 `input.mouse` 默认返回 `mouse_forbidden`，不会触发 `SetCursorPos` 或 `mouse_event`。
+
+如果确实要临时恢复 OS 鼠标兜底，可以设置环境变量 `WITCH_JOURNEY_NO_MOUSE=0`，或单次调用 `witch_input_mouse` 时传 `noMouse:false`。不建议把它作为自动接管路径。
+
 ## 验证
 
 不启动真实游戏桥时，可以运行本地协议测试：
@@ -88,6 +105,7 @@
 npm run selftest
 npm run calltest
 npm run orchestration-test
+npm run no-mouse-test
 npm run e2e-fake
 ```
 
