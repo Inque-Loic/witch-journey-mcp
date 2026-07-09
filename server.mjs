@@ -219,6 +219,27 @@ const tools = [
     }
   },
   {
+    name: "witch_no_mouse_collect_ready_evidence",
+    description: "Automatically probe ready no-mouse operations in the current state, using the evidence plan or full control map, and record operation-level proof evidence.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dryRun: { type: "boolean", default: true },
+        confirm: { type: "string", description: "Required as EXECUTE_NO_MOUSE_PROBES when dryRun is false." },
+        onlyMissing: { type: "boolean", default: true },
+        maxProbes: { type: "integer", default: 8 },
+        recordEvidence: { type: "boolean", default: true },
+        recordStateSample: { type: "boolean", default: true },
+        includePlan: { type: "boolean", default: true },
+        includeControlMap: { type: "boolean", default: false },
+        includePostAudit: { type: "boolean", default: true },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_runtime_diagnostics",
     description: "Inspect local runtime state without requiring the bridge: process, installed mod files, DLL command markers, Player.log evidence, and bridge status.",
     inputSchema: {
@@ -1274,6 +1295,9 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_no_mouse_probe_operation") {
       return toolResult(id, await probeNoMouseOperation(args));
+    }
+    if (toolName === "witch_no_mouse_collect_ready_evidence") {
+      return toolResult(id, await collectReadyNoMouseEvidence(args));
     }
     if (toolName === "witch_runtime_diagnostics") {
       return toolResult(id, await runtimeDiagnostics(args));
@@ -4400,6 +4424,123 @@ async function probeNoMouseOperation(args) {
   };
 }
 
+async function collectReadyNoMouseEvidence(args) {
+  const dryRun = args?.dryRun !== false;
+  if (!dryRun && args?.confirm !== "EXECUTE_NO_MOUSE_PROBES") {
+    return {
+      ok: false,
+      dryRun,
+      reason: "probe_execution_confirmation_required",
+      nextStep: "Pass confirm:\"EXECUTE_NO_MOUSE_PROBES\" only after reviewing the selected no-mouse operations."
+    };
+  }
+
+  const maxProbes = Math.max(0, Math.min(50, Number(args?.maxProbes ?? 8)));
+  const plan = await noMouseEvidencePlan({
+    includeCurrentState: true,
+    includePolicyTests: true,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    includeControlMap: args?.includeControlMap === true
+  });
+  const candidates = args?.onlyMissing === false
+    ? await collectReadyNoMouseCandidatesFromControlMap(args || {})
+    : collectReadyNoMouseCandidatesFromPlan(plan);
+  const selected = dedupeOperationCandidates(candidates).slice(0, maxProbes);
+  const probes = [];
+
+  for (const candidate of selected) {
+    const probe = await probeNoMouseOperation({
+      operationId: candidate.operationId,
+      dryRun,
+      recordEvidence: args?.recordEvidence !== false,
+      note: candidate.note || "collect ready no-mouse evidence",
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+    probes.push({ candidate, probe });
+  }
+
+  const stateSample = args?.recordStateSample === false
+    ? null
+    : await recordNoMouseEvidence({
+      note: "collect ready no-mouse evidence state sample",
+      includePolicyTests: false,
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+  const postAudit = args?.includePostAudit === false
+    ? null
+    : await noMouseCompletionAudit({
+      includeCurrentState: true,
+      includePolicyTests: true,
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+
+  return {
+    ok: probes.every(item => item.probe?.ok !== false),
+    dryRun,
+    capturedAtUtc: new Date().toISOString(),
+    selectedCount: selected.length,
+    maxProbes,
+    onlyMissing: args?.onlyMissing !== false,
+    completeBefore: plan.complete === true,
+    completeAfter: postAudit ? postAudit.complete === true : null,
+    probes,
+    stateSample,
+    postAudit,
+    plan: args?.includePlan === false ? undefined : plan
+  };
+}
+
+async function collectReadyNoMouseCandidatesFromControlMap(args) {
+  const controlMap = await collectControlMap({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    includeActions: true,
+    includeUi: true,
+    includeScene: true,
+    includeBattle: true,
+    includeUnsupported: false
+  });
+  const operations = Array.isArray(controlMap.operations) ? controlMap.operations : [];
+  return operations
+    .filter(operation => operation?.ready !== false && operation?.noMouse === true && operation?.call?.tool !== "witch_input_mouse")
+    .map(operation => ({
+      operationId: operation.id,
+      family: operation.family,
+      action: operation.action,
+      label: operation.label,
+      note: "collect ready no-mouse evidence: " + operation.family + "/" + operation.action
+    }));
+}
+
+function collectReadyNoMouseCandidatesFromPlan(plan) {
+  const steps = Array.isArray(plan?.operationProofSteps) ? plan.operationProofSteps : [];
+  return steps
+    .filter(step => step.status === "ready_in_current_state" && step.dryRunCall?.arguments?.operationId)
+    .map(step => ({
+      operationId: step.dryRunCall.arguments.operationId,
+      family: step.family,
+      action: step.action,
+      label: step.operation?.label || null,
+      note: "collect missing no-mouse evidence: " + step.family + "/" + step.action
+    }));
+}
+
+function dedupeOperationCandidates(candidates) {
+  const seen = new Set();
+  const result = [];
+  for (const candidate of candidates) {
+    const key = candidate.operationId || [candidate.family, candidate.action, candidate.label].join(":");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(candidate);
+  }
+  return result;
+}
+
 function compactProbeResult(result) {
   if (!result) return null;
   return {
@@ -5205,6 +5346,8 @@ async function executeBatchStep(step, options) {
       return noMouseEvidencePlan(args);
     case "witch_no_mouse_probe_operation":
       return probeNoMouseOperation({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
+    case "witch_no_mouse_collect_ready_evidence":
+      return collectReadyNoMouseEvidence({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_status":
       return safeCallBridge("status", {});
     case "witch_game_snapshot":

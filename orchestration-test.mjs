@@ -485,8 +485,9 @@ send(48, "tools/call", { name: "witch_no_mouse_completion_audit", arguments: { i
 send(49, "tools/call", { name: "witch_execute_operation", arguments: { family: "battle", action: "play_card_target", dryRun: true } });
 send(50, "tools/call", { name: "witch_no_mouse_evidence_plan", arguments: { includeCurrentState: true, includePolicyTests: true } });
 send(51, "tools/call", { name: "witch_no_mouse_probe_operation", arguments: { family: "battle", action: "play_card_target", dryRun: false, note: "orchestration probe" } });
+send(52, "tools/call", { name: "witch_no_mouse_collect_ready_evidence", arguments: { onlyMissing: false, dryRun: true, maxProbes: 6 } });
 
-for (let id = 2; id <= 51; id++) {
+for (let id = 2; id <= 52; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -552,8 +553,9 @@ const noMouseCompletionAudit = textResult(48);
 const executeOperation = textResult(49);
 const noMouseEvidencePlan = textResult(50);
 const noMouseProbeOperation = textResult(51);
+const noMouseCollectReadyEvidence = textResult(52);
 
-if (!capabilities.ok || capabilities.tools.length < 54 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 55 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -624,6 +626,9 @@ if (!noMouseEvidencePlan.ok || noMouseEvidencePlan.complete !== true || noMouseE
 }
 if (!noMouseProbeOperation.ok || noMouseProbeOperation.probe?.executed !== true || noMouseProbeOperation.probe?.noMouse !== true || noMouseProbeOperation.summary?.operationProbes?.battle?.play_card_target?.executedSuccess !== true) {
   throw new Error(`bad no-mouse probe operation ${JSON.stringify(noMouseProbeOperation, null, 2)}`);
+}
+if (!noMouseCollectReadyEvidence.ok || noMouseCollectReadyEvidence.dryRun !== true || noMouseCollectReadyEvidence.selectedCount < 1 || noMouseCollectReadyEvidence.probes?.[0]?.probe?.probe?.dryRun !== true || noMouseCollectReadyEvidence.stateSample?.ok !== true) {
+  throw new Error(`bad no-mouse collect ready evidence ${JSON.stringify(noMouseCollectReadyEvidence, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);
