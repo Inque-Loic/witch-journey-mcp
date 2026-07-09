@@ -4,7 +4,9 @@ param(
   [int]$IntervalSec = 2,
   [int]$MaxAdvanceSteps = 8,
   [int]$MaxProbesPerStep = 8,
+  [int]$SyncTimeoutSec = 600,
   [string]$OutputPath,
+  [switch]$WaitForDllUnlock,
   [switch]$ExecuteStateAdvance,
   [switch]$ExecuteProbes,
   [switch]$IncludeScreenshot
@@ -175,6 +177,25 @@ function Write-ProofBundle {
   Write-Host "Proof bundles may include current game state, labels, and candidate operation ids; review before sharing."
 }
 
+function Write-SyncSummary {
+  param($Sync)
+
+  Write-Host ""
+  Write-Host "Bridge DLL sync result:"
+  Write-Host ("  ok:      " + [string]$Sync.ok)
+  Write-Host ("  reason:  " + [string]$Sync.reason)
+  Write-Host ("  waited:  " + [string]$Sync.waitedMs + " ms")
+  if ($Sync.runtimeEffect) {
+    Write-Host ("  effect:  " + $Sync.runtimeEffect)
+  }
+  if ($Sync.sync -and $Sync.sync.errorCategory) {
+    Write-Host ("  error:   " + $Sync.sync.errorCategory)
+  }
+  if ($Sync.nextStep) {
+    Write-Host ("  next:    " + $Sync.nextStep)
+  }
+}
+
 $argsForTool = @{
   timeoutMs = $TimeoutSec * 1000
   pollMs = [Math]::Max(100, $IntervalSec * 1000)
@@ -184,11 +205,38 @@ $argsForTool = @{
   includePlan = $true
 }
 
+if ($WaitForDllUnlock) {
+  if ($ConfirmRestart -eq "RESTART_WITCH_GAME") {
+    throw "-WaitForDllUnlock waits for a manual close and does not restart the game itself; omit -ConfirmRestart for this mode."
+  }
+
+  Write-Host "Waiting for the bridge DLL to become writable."
+  Write-Host "No game process will be closed by this script. Close the game manually when you are ready."
+  Write-Host ""
+  $sync = Invoke-WitchMcpJson witch_sync_bridge_artifacts @{
+    dryRun = $false
+    confirm = "SYNC_BRIDGE_ARTIFACTS"
+    waitForUnlock = $true
+    timeoutMs = $SyncTimeoutSec * 1000
+    pollMs = [Math]::Max(100, $IntervalSec * 1000)
+    includeDiagnostics = $true
+  }
+  Write-SyncSummary $sync
+  if ($sync.ok -eq $true) {
+    Write-Host ""
+    Write-Host "Updated bridge DLL is ready for the next game start. Start the game again, then run this script without -WaitForDllUnlock to continue the strict proof."
+    exit 0
+  }
+  exit 4
+}
+
 if ($ConfirmRestart -ne "RESTART_WITCH_GAME") {
   Write-Host "Previewing the strict no-mouse proof pipeline."
   Write-Host "No game process will be closed or restarted."
   Write-Host "To load the newest bridge DLL and run the proof pipeline, re-run with:"
   Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -ConfirmRestart RESTART_WITCH_GAME"
+  Write-Host "Or wait for a manual close and sync the DLL without closing the game from Codex:"
+  Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock"
   Write-Host ""
   $preview = Invoke-WitchMcpJson witch_no_mouse_restart_advance_audit $argsForTool
   Write-ProofSummary $preview

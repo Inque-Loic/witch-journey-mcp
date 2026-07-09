@@ -166,6 +166,14 @@ powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -ConfirmR
 
 上面的命令会重启游戏、等待桥接上线、记录证据、执行 dry-run 状态推进计划并跑 `witch_no_mouse_completion_audit`。如果你已经审查过候选操作，并允许脚本真实推进游戏状态，可以额外加 `-ExecuteStateAdvance`；如果还允许真实执行操作探针，可以再加 `-ExecuteProbes`。这两个开关都可能改变当前游戏状态，因此默认关闭。
 
+如果不想让脚本关闭游戏，但希望它在你手动退出游戏后自动同步新版桥接 DLL，可以使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock
+```
+
+这个模式不会关闭或重启游戏，只会等待 `Entry.dll` 可写；你手动关闭游戏释放 DLL 后，它会同步新版桥接。同步完成后，再手动启动游戏并重新运行证明脚本继续严格审计。
+
 如果需要保留机器可读的证明包，可以加 `-OutputPath`：
 
 ```powershell
