@@ -625,7 +625,7 @@ if (!noMouseCompletionAudit.complete || noMouseCompletionAudit.requirements?.som
 if (!executeOperation.ok || executeOperation.dryRun !== true || executeOperation.selected?.family !== "battle" || executeOperation.selected?.action !== "play_card_target" || executeOperation.plannedCall?.tool !== "witch_play_card" || executeOperation.result?.skipped !== true) {
   throw new Error(`bad execute operation ${JSON.stringify(executeOperation, null, 2)}`);
 }
-if (!noMouseEvidencePlan.ok || noMouseEvidencePlan.complete !== true || noMouseEvidencePlan.readyProbeCount !== 0 || noMouseEvidencePlan.completionAuditCall?.tool !== "witch_no_mouse_completion_audit") {
+if (!noMouseEvidencePlan.ok || noMouseEvidencePlan.complete !== true || noMouseEvidencePlan.readyProbeCount !== 0 || noMouseEvidencePlan.completionAuditCall?.tool !== "witch_no_mouse_completion_audit" || !Array.isArray(noMouseEvidencePlan.stateAdvanceCandidates)) {
   throw new Error(`bad no-mouse evidence plan ${JSON.stringify(noMouseEvidencePlan, null, 2)}`);
 }
 if (!noMouseProbeOperation.ok || noMouseProbeOperation.probe?.executed !== true || noMouseProbeOperation.probe?.noMouse !== true || noMouseProbeOperation.summary?.operationProbes?.battle?.play_card_target?.executedSuccess !== true) {

@@ -2692,6 +2692,7 @@ async function noMouseEvidencePlan(args) {
     .filter(item => item.name !== "operation_type_samples_observed")
     .map(item => requirementProofStep(item));
   const readyProbeCount = operationProofSteps.filter(item => item.status === "ready_in_current_state").length;
+  const stateAdvanceCandidates = stateAdvanceCandidatesFromOperations(operations, missingOperationTypes);
 
   return {
     ok: true,
@@ -2705,6 +2706,7 @@ async function noMouseEvidencePlan(args) {
     missingOperationTypes,
     operationProofSteps,
     requirementSteps,
+    stateAdvanceCandidates,
     recordEvidenceCall: {
       tool: "witch_no_mouse_record_evidence",
       arguments: {
@@ -2732,6 +2734,52 @@ async function noMouseEvidencePlan(args) {
       actionTypesByFamily: actionTypesFromControlMap(controlMap)
     }
   };
+}
+
+function stateAdvanceCandidatesFromOperations(operations, missingOperationTypes) {
+  const missingFamilies = new Set((missingOperationTypes || []).map(item => item.family));
+  const candidates = (operations || [])
+    .filter(operation => operation?.noMouse === true && operation?.ready !== false && operation?.call?.tool !== "witch_input_mouse")
+    .map(operation => {
+      const score = stateAdvanceScore(operation, missingFamilies);
+      return {
+        score,
+        reason: stateAdvanceReason(operation, missingFamilies, score),
+        operation: summarizeOperationForProof(operation),
+        dryRunCall: { tool: "witch_execute_operation", arguments: { operationId: operation.id, dryRun: true } },
+        executeCall: { tool: "witch_execute_operation", arguments: { operationId: operation.id, dryRun: false } }
+      };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score || String(a.operation.label || "").localeCompare(String(b.operation.label || "")));
+  return candidates.slice(0, 12);
+}
+
+function stateAdvanceScore(operation, missingFamilies) {
+  let score = 0;
+  const family = operation?.family || "";
+  const action = normalizeActionName(operation?.action || "");
+  const label = normalizeText([operation?.label, operation?.target?.label, operation?.target?.text, operation?.target?.name].filter(Boolean).join(" "));
+  if (family === "legal_action") score += 100;
+  if (family === "ui") score += 30;
+  if (family === "scene") score += 50;
+  if (family === "battle") score += 80;
+  if (action === "click" || action === "submit") score += 15;
+  if (/(start|begin|new|continue|journey|play|run|enter|confirm|ok|yes|next|map|battle|fight|combat|adventure|探索|开始|继续|确定|进入|战斗|地图|冒险)/i.test(label)) score += 80;
+  if (missingFamilies.has("legal_action") && /(start|journey|run|play|continue|开始|继续)/i.test(label)) score += 40;
+  if (missingFamilies.has("scene") && /(map|enter|explore|door|world|scene|地图|进入|探索|门)/i.test(label)) score += 35;
+  if (missingFamilies.has("battle") && /(battle|fight|combat|enemy|encounter|战斗|敌|遭遇)/i.test(label)) score += 35;
+  if (operation?.ready === false) score -= 100;
+  return score;
+}
+
+function stateAdvanceReason(operation, missingFamilies, score) {
+  if (operation?.family === "legal_action") return "Current legal action may advance gameplay state toward missing evidence.";
+  const label = normalizeText(operation?.label || "");
+  if (missingFamilies.has("battle") && /(battle|fight|combat|战斗)/i.test(label)) return "Label looks battle-related and battle evidence is missing.";
+  if (missingFamilies.has("scene") && /(map|enter|explore|地图|进入|探索)/i.test(label)) return "Label looks scene/exploration-related and scene evidence is missing.";
+  if (missingFamilies.has("legal_action") && /(start|journey|continue|开始|继续)/i.test(label)) return "Label looks like it may enter gameplay where legal actions become available.";
+  return score >= 80 ? "Ready no-mouse operation has labels/actions that may advance state." : "Ready no-mouse operation is available as a conservative state-advance candidate.";
 }
 
 function operationProofStep(missing, operations) {
@@ -4717,6 +4765,12 @@ async function driveNoMouseEvidence(args) {
     }
 
     if (collection.selectedCount === 0 && args?.stopWhenNoReady !== false) {
+      const finalPlan = args?.includePlan === false ? null : await noMouseEvidencePlan({
+        includePolicyTests: true,
+        includeCurrentState: true,
+        includeHidden: !!args?.includeHidden,
+        onlyInteractive: args?.onlyInteractive !== false
+      });
       return {
         ok: true,
         complete: false,
@@ -4726,12 +4780,8 @@ async function driveNoMouseEvidence(args) {
         nextStep: "Enter a game state that exposes one of the missing legal-action, scene, or battle operation types, then run this tool again.",
         rounds,
         finalAudit,
-        finalPlan: args?.includePlan === false ? null : await noMouseEvidencePlan({
-          includePolicyTests: true,
-          includeCurrentState: true,
-          includeHidden: !!args?.includeHidden,
-          onlyInteractive: args?.onlyInteractive !== false
-        })
+        stateAdvanceCandidates: finalPlan?.stateAdvanceCandidates || [],
+        finalPlan
       };
     }
 
