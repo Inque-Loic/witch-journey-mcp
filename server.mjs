@@ -1980,7 +1980,13 @@ async function restartAdvanceNoMouseAudit(args) {
     stopAfterDryRunPlan: advanceDryRun,
     includePlan: args?.includePlan !== false,
     includeHidden: !!args?.includeHidden,
-    onlyInteractive: args?.onlyInteractive !== false
+    onlyInteractive: args?.onlyInteractive !== false,
+    allowOperationIds: args?.allowOperationIds,
+    denyOperationIds: args?.denyOperationIds,
+    allowLabels: args?.allowLabels,
+    denyLabels: args?.denyLabels,
+    allowPaths: args?.allowPaths,
+    denyPaths: args?.denyPaths
   });
   const completionAudit = await noMouseCompletionAudit({
     includePolicyTests: true,
