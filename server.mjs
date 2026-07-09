@@ -124,6 +124,20 @@ const tools = [
     }
   },
   {
+    name: "witch_no_mouse_coverage",
+    description: "Collect live no-mouse coverage evidence from the running game: MCP tools, bridge commands, runtime automation services, and current control-map samples.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeCurrentState: { type: "boolean", default: true },
+        includePolicyTests: { type: "boolean", default: true },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_runtime_diagnostics",
     description: "Inspect local runtime state without requiring the bridge: process, installed mod files, DLL command markers, Player.log evidence, and bridge status.",
     inputSchema: {
@@ -1121,6 +1135,9 @@ async function handleRequest(request) {
     if (toolName === "witch_no_mouse_audit") {
       return toolResult(id, await noMouseAudit(args));
     }
+    if (toolName === "witch_no_mouse_coverage") {
+      return toolResult(id, await noMouseCoverage(args));
+    }
     if (toolName === "witch_runtime_diagnostics") {
       return toolResult(id, await runtimeDiagnostics(args));
     }
@@ -1640,6 +1657,7 @@ function localCapabilities() {
         "witch_perform_action_match",
         "witch_auto_step",
         "witch_control_map",
+        "witch_no_mouse_coverage",
         "witch_ui_interact",
         "witch_ui_click_label",
         "witch_scene_interact",
@@ -1668,6 +1686,7 @@ function localCapabilities() {
       "Use witch_takeover_drive for a bounded multi-step takeover loop after reviewing stop conditions.",
       "Use witch_window_focus before fallback input when focus is uncertain.",
       "No-mouse mode is enabled by default; use legal actions, UI automation, scene automation, and runtime tools instead of witch_input_mouse.",
+      "Use witch_no_mouse_coverage to prove the running game has the required no-mouse runtime services and current control-map evidence.",
       "Use witch_input_key and witch_input_text only as fallback controls when typed game/UI/scene automation is insufficient. witch_input_mouse is refused unless noMouse is explicitly disabled.",
       "Use witch_runtime_inspect to discover loaded game automation/debug surfaces when typed tools do not cover a needed operation.",
       "Use witch_runtime_objects to inspect Unity GameObjects/components when UI, scene, or legal-action snapshots do not expose enough context.",
@@ -1738,6 +1757,175 @@ async function noMouseAudit(args) {
   };
 }
 
+async function noMouseCoverage(args) {
+  const capabilities = localCapabilities();
+  const toolNames = new Set(capabilities.tools.map(tool => tool.name));
+  const bridgeCommands = new Set(capabilities.bridgeCommands || []);
+  const policyTests = args?.includePolicyTests === false ? null : await runNoMousePolicyTests();
+  const runtimeServices = await inspectNoMouseRuntimeServices();
+  const currentState = args?.includeCurrentState === false ? null : await collectNoMouseCurrentState(args || {});
+  const families = noMouseCoverageFamilies(runtimeServices, currentState);
+
+  const checks = [
+    {
+      name: "default_no_mouse_enabled",
+      ok: DEFAULT_NO_MOUSE === true,
+      message: DEFAULT_NO_MOUSE ? "OS mouse fallback is disabled by default." : "OS mouse fallback is enabled by default."
+    },
+    {
+      name: "mouse_entry_points_refused",
+      ok: policyTests ? policyTests.ok === true : true,
+      message: policyTests ? "Direct, escape-hatch, and batch mouse entry points were checked." : "Policy tests skipped by request."
+    },
+    {
+      name: "mcp_tools_present",
+      ok: families.every(family => family.requiredTools.every(tool => toolNames.has(tool))),
+      message: "Required no-mouse MCP tools were checked against the local tool list."
+    },
+    {
+      name: "bridge_commands_present",
+      ok: families.every(family => family.bridgeCommands.every(command => bridgeCommands.has(command))),
+      message: "Required bridge commands were checked against the local capability declaration."
+    },
+    {
+      name: "runtime_services_present",
+      ok: families.every(family => family.runtime.ok),
+      message: "Runtime automation services and methods were inspected in the running game."
+    },
+    {
+      name: "current_state_mapped_or_skipped",
+      ok: currentState ? currentState.ok === true : true,
+      message: currentState ? currentState.message : "Current-state control-map inspection skipped by request."
+    }
+  ];
+
+  return {
+    ok: checks.every(check => check.ok),
+    capturedAtUtc: new Date().toISOString(),
+    noMouseDefault: DEFAULT_NO_MOUSE,
+    bridgeUrl: BRIDGE_URL,
+    workspaceRoot: WORKSPACE_ROOT,
+    checks,
+    families,
+    runtimeServices,
+    currentState,
+    policyTests,
+    capabilities: {
+      toolCount: capabilities.tools.length,
+      bridgeCommandCount: capabilities.bridgeCommands.length,
+      noMouseMode: capabilities.noMouseMode
+    }
+  };
+}
+
+async function inspectNoMouseRuntimeServices() {
+  const specs = [
+    {
+      key: "gameplay",
+      typeName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
+      query: "RuntimeGameplayAutomationService",
+      requiredMethods: ["GetLegalActions", "PerformActionAsync"]
+    },
+    {
+      key: "ui",
+      typeName: "Witch.UI.Automation.RuntimeUiAutomationService",
+      query: "RuntimeUiAutomationService",
+      requiredMethods: ["CaptureSnapshot", "EvaluateWaitCondition", "InteractAsync"]
+    },
+    {
+      key: "scene",
+      typeName: "Witch.UI.Automation.RuntimeSceneAutomationService",
+      query: "RuntimeSceneAutomationService",
+      requiredMethods: ["CaptureSnapshot", "Raycast", "InteractAsync"]
+    },
+    {
+      key: "battle",
+      typeName: "Witch.UI.Automation.RuntimeBattleAutomationService",
+      query: "RuntimeBattleAutomationService",
+      requiredMethods: ["PlayCardAsync"]
+    }
+  ];
+
+  const entries = {};
+  await Promise.all(specs.map(async spec => {
+    const inspect = await safeCallBridge("runtime.inspect", {
+      query: spec.query,
+      assembly: "Witch",
+      maxTypes: 20,
+      maxMembersPerType: 120
+    });
+    const service = runtimeServiceEvidence(inspect, spec);
+    entries[spec.key] = service;
+  }));
+  return entries;
+}
+
+function runtimeServiceEvidence(inspect, spec) {
+  const types = Array.isArray(inspect?.data?.types) ? inspect.data.types : [];
+  const type = types.find(item => item.fullName === spec.typeName) || types.find(item => String(item.fullName || "").endsWith("." + spec.query));
+  const methodNames = new Set((type?.members || [])
+    .filter(member => member.kind === "method")
+    .map(member => member.name));
+  const missingMethods = spec.requiredMethods.filter(name => !methodNames.has(name));
+  return {
+    ok: inspect?.ok === true && !!type && missingMethods.length === 0,
+    key: spec.key,
+    typeName: spec.typeName,
+    requiredMethods: spec.requiredMethods,
+    missingMethods,
+    foundType: type ? {
+      assembly: type.assembly,
+      fullName: type.fullName,
+      isPublic: type.isPublic,
+      isStatic: type.isStatic,
+      methodCount: methodNames.size
+    } : null,
+    inspect: inspect?.ok === true ? {
+      ok: true,
+      truncated: inspect.data?.truncated === true,
+      typeCount: types.length
+    } : inspect
+  };
+}
+
+function noMouseCoverageFamilies(runtimeServices, currentState) {
+  const byFamily = currentState?.controlMap?.byFamily || {};
+  return [
+    {
+      name: "high_level_gameplay",
+      requiredTools: ["witch_legal_actions", "witch_perform_action", "witch_perform_action_match", "witch_auto_step", "witch_auto_drive"],
+      bridgeCommands: ["game.legal_actions", "game.perform_action"],
+      runtime: runtimeServices.gameplay,
+      currentMappedOperations: byFamily.legal_action || 0,
+      noMousePath: "game legal-action automation"
+    },
+    {
+      name: "ui_operations",
+      requiredTools: ["witch_ui_snapshot", "witch_ui_interact", "witch_ui_click_label", "witch_ui_wait", "witch_control_map"],
+      bridgeCommands: ["ui.snapshot", "ui.interact", "ui.wait"],
+      runtime: runtimeServices.ui,
+      currentMappedOperations: byFamily.ui || 0,
+      noMousePath: "Unity UI automation"
+    },
+    {
+      name: "scene_operations",
+      requiredTools: ["witch_scene_snapshot", "witch_scene_interact", "witch_scene_raycast", "witch_control_map"],
+      bridgeCommands: ["scene.snapshot", "scene.interact", "scene.raycast"],
+      runtime: runtimeServices.scene,
+      currentMappedOperations: byFamily.scene || 0,
+      noMousePath: "Unity scene automation"
+    },
+    {
+      name: "battle_card_operations",
+      requiredTools: ["witch_play_card"],
+      bridgeCommands: ["battle.play_card"],
+      runtime: runtimeServices.battle,
+      currentMappedOperations: byFamily.battle || 0,
+      noMousePath: "battle card automation"
+    }
+  ];
+}
+
 function noMouseOperationFamilies() {
   return [
     {
@@ -1797,6 +1985,7 @@ function noMouseOperationFamilies() {
       tools: [
         "witch_game_snapshot",
         "witch_control_map",
+        "witch_no_mouse_coverage",
         "witch_state_summary",
         "witch_plan_next",
         "witch_execute_plan",
@@ -1978,6 +2167,7 @@ async function takeoverAudit(args) {
     "witch_verify_readiness",
     "witch_takeover_audit",
     "witch_no_mouse_audit",
+    "witch_no_mouse_coverage",
     "witch_takeover_step",
     "witch_takeover_drive",
     "witch_game_snapshot",
@@ -3759,6 +3949,8 @@ async function executeBatchStep(step, options) {
       return takeoverAudit(args);
     case "witch_no_mouse_audit":
       return noMouseAudit(args);
+    case "witch_no_mouse_coverage":
+      return noMouseCoverage(args);
     case "witch_status":
       return safeCallBridge("status", {});
     case "witch_game_snapshot":

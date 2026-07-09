@@ -78,4 +78,13 @@ Assert-Field ($controlMap.noMouseDefault -eq $true) "witch_control_map did not a
 $mouseMapped = @($controlMap.operations | Where-Object { $_.noMouse -ne $true -or $_.call.tool -eq "witch_input_mouse" })
 Assert-Field ($mouseMapped.Count -eq 0) "witch_control_map exposed a mouse-based operation" $controlMap
 
+Write-Host "Checking live no-mouse coverage matrix..."
+$coverage = Invoke-WitchMcpJson witch_no_mouse_coverage @{ includeCurrentState = $true; includePolicyTests = $true }
+Assert-Field ($coverage.ok -eq $true) "witch_no_mouse_coverage did not return ok=true" $coverage
+Assert-Field ($coverage.checks | Where-Object { $_.name -eq "runtime_services_present" -and $_.ok -eq $true }) "witch_no_mouse_coverage did not confirm runtime services" $coverage
+Assert-Field ($coverage.families | Where-Object { $_.name -eq "high_level_gameplay" -and $_.runtime.ok -eq $true }) "witch_no_mouse_coverage did not confirm gameplay automation" $coverage
+Assert-Field ($coverage.families | Where-Object { $_.name -eq "ui_operations" -and $_.runtime.ok -eq $true }) "witch_no_mouse_coverage did not confirm UI automation" $coverage
+Assert-Field ($coverage.families | Where-Object { $_.name -eq "scene_operations" -and $_.runtime.ok -eq $true }) "witch_no_mouse_coverage did not confirm scene automation" $coverage
+Assert-Field ($coverage.families | Where-Object { $_.name -eq "battle_card_operations" -and $_.runtime.ok -eq $true }) "witch_no_mouse_coverage did not confirm battle automation" $coverage
+
 Write-Host "ok: no-mouse policy refuses OS mouse entry points"

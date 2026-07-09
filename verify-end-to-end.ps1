@@ -102,7 +102,7 @@ Assert-Field ($restartDenied.reason -eq "restart_confirmation_required") "witch_
 Write-Host "6. Calling witch_capabilities through MCP..."
 $capabilities = Invoke-WitchMcpJson witch_capabilities
 Assert-WitchOk $capabilities "witch_capabilities"
-Assert-Field (@($capabilities.tools).Count -ge 47) "witch_capabilities returned too few tools" $capabilities
+Assert-Field (@($capabilities.tools).Count -ge 48) "witch_capabilities returned too few tools" $capabilities
 
 Write-Host "7. Calling witch_runtime_diagnostics through MCP..."
 $diagnostics = Invoke-WitchMcpJson witch_runtime_diagnostics @{ includeLogTail = $false }

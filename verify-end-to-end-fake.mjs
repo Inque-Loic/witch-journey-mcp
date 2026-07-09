@@ -129,7 +129,7 @@ function commandResult(command, params) {
     case "window.focus":
       return { ok: true, data: { focused: true, isForeground: true, requestedWindow: 12345 } };
     case "runtime.inspect":
-      return { ok: true, data: { types: [{ fullName: "Witch.UI.Automation.RuntimeGameplayAutomationService", members: [] }] } };
+      return { ok: true, data: { types: fakeRuntimeTypes(params.query || "") } };
     case "runtime.objects":
       return { ok: true, data: { objects: [{ name: "MainCamera", instanceId: 77, components: [{ type: "UnityEngine.Camera", name: "Camera" }] }] } };
     case "runtime.object_detail":
@@ -159,6 +159,47 @@ function commandResult(command, params) {
     default:
       return { ok: false, error: `unexpected ${command}` };
   }
+}
+
+function fakeRuntimeTypes(query) {
+  const services = [
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
+      members: [
+        { kind: "method", name: "GetLegalActions", isStatic: true, parameters: [] },
+        { kind: "method", name: "PerformActionAsync", isStatic: true, parameters: [] }
+      ]
+    },
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeUiAutomationService",
+      members: [
+        { kind: "method", name: "CaptureSnapshot", isStatic: true, parameters: [] },
+        { kind: "method", name: "EvaluateWaitCondition", isStatic: true, parameters: [] },
+        { kind: "method", name: "InteractAsync", isStatic: true, parameters: [] }
+      ]
+    },
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeSceneAutomationService",
+      members: [
+        { kind: "method", name: "CaptureSnapshot", isStatic: true, parameters: [] },
+        { kind: "method", name: "Raycast", isStatic: true, parameters: [] },
+        { kind: "method", name: "InteractAsync", isStatic: true, parameters: [] }
+      ]
+    },
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeBattleAutomationService",
+      members: [
+        { kind: "method", name: "PlayCardAsync", isStatic: true, parameters: [] }
+      ]
+    }
+  ];
+  const normalized = String(query || "").toLocaleLowerCase();
+  const filtered = services.filter(type => type.fullName.toLocaleLowerCase().includes(normalized) || type.fullName.split(".").pop().toLocaleLowerCase().includes(normalized));
+  return filtered.length > 0 ? filtered : services;
 }
 
 async function streamText(stream) {

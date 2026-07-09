@@ -117,15 +117,7 @@ const bridge = http.createServer((request, response) => {
           ok: true,
           data: {
             query: payload.params.query || "",
-            types: [
-              {
-                assembly: "Witch",
-                fullName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
-                members: [
-                  { kind: "method", name: "GetLegalActions", isStatic: true, parameters: [] }
-                ]
-              }
-            ]
+            types: fakeRuntimeTypes(payload.params.query || "")
           }
         };
         break;
@@ -260,6 +252,47 @@ const bridge = http.createServer((request, response) => {
     response.end(JSON.stringify(result));
   });
 });
+
+function fakeRuntimeTypes(query) {
+  const services = [
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
+      members: [
+        { kind: "method", name: "GetLegalActions", isStatic: true, parameters: [] },
+        { kind: "method", name: "PerformActionAsync", isStatic: true, parameters: [] }
+      ]
+    },
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeUiAutomationService",
+      members: [
+        { kind: "method", name: "CaptureSnapshot", isStatic: true, parameters: [] },
+        { kind: "method", name: "EvaluateWaitCondition", isStatic: true, parameters: [] },
+        { kind: "method", name: "InteractAsync", isStatic: true, parameters: [] }
+      ]
+    },
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeSceneAutomationService",
+      members: [
+        { kind: "method", name: "CaptureSnapshot", isStatic: true, parameters: [] },
+        { kind: "method", name: "Raycast", isStatic: true, parameters: [] },
+        { kind: "method", name: "InteractAsync", isStatic: true, parameters: [] }
+      ]
+    },
+    {
+      assembly: "Witch",
+      fullName: "Witch.UI.Automation.RuntimeBattleAutomationService",
+      members: [
+        { kind: "method", name: "PlayCardAsync", isStatic: true, parameters: [] }
+      ]
+    }
+  ];
+  const normalized = String(query || "").toLocaleLowerCase();
+  const filtered = services.filter(type => type.fullName.toLocaleLowerCase().includes(normalized) || type.fullName.split(".").pop().toLocaleLowerCase().includes(normalized));
+  return filtered.length > 0 ? filtered : services;
+}
 
 bridge.listen(port, "127.0.0.1");
 await once(bridge, "listening");
@@ -421,8 +454,9 @@ send(42, "tools/call", { name: "witch_restart_and_watch_bridge", arguments: { ti
 send(43, "tools/call", { name: "witch_auto_step", arguments: { dryRun: false, label: "open map", denyKinds: ["navigation"] } });
 send(44, "tools/call", { name: "witch_no_mouse_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 send(45, "tools/call", { name: "witch_control_map", arguments: { includeHidden: false, onlyInteractive: true } });
+send(46, "tools/call", { name: "witch_no_mouse_coverage", arguments: { includeCurrentState: true, includePolicyTests: true } });
 
-for (let id = 2; id <= 45; id++) {
+for (let id = 2; id <= 46; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -482,8 +516,9 @@ const restartAndWatchDenied = textResult(42);
 const policyDeniedAutoStep = textResult(43);
 const noMouseAudit = textResult(44);
 const controlMap = textResult(45);
+const noMouseCoverage = textResult(46);
 
-if (!capabilities.ok || capabilities.tools.length < 47 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 48 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -495,7 +530,7 @@ if (!runtimeInspect.ok || runtimeInspect.data?.types?.[0]?.fullName !== "Witch.U
 if (!runtimeInvoke.ok || runtimeInvoke.data?.methodName !== "GetLegalActions" || runtimeInvoke.data?.result?.invoked !== true) {
   throw new Error(`bad runtime invoke ${JSON.stringify(runtimeInvoke, null, 2)}`);
 }
-if (!runtimeBatch.ok || runtimeBatch.results?.[0]?.result?.data?.types?.length !== 1 || runtimeBatch.results?.[1]?.result?.data?.objects?.[0]?.name !== "MainCamera" || runtimeBatch.results?.[2]?.result?.data?.components?.[0]?.name !== "Camera" || runtimeBatch.results?.[3]?.result?.data?.components?.[0]?.members?.[0]?.name !== "fieldOfView" || runtimeBatch.results?.[4]?.result?.data?.method?.name !== "GetInstanceID" || runtimeBatch.results?.[5]?.result?.data?.member?.name !== "fieldOfView" || runtimeBatch.results?.[6]?.result?.skipped !== true) {
+if (!runtimeBatch.ok || runtimeBatch.results?.[0]?.result?.data?.types?.length < 1 || runtimeBatch.results?.[1]?.result?.data?.objects?.[0]?.name !== "MainCamera" || runtimeBatch.results?.[2]?.result?.data?.components?.[0]?.name !== "Camera" || runtimeBatch.results?.[3]?.result?.data?.components?.[0]?.members?.[0]?.name !== "fieldOfView" || runtimeBatch.results?.[4]?.result?.data?.method?.name !== "GetInstanceID" || runtimeBatch.results?.[5]?.result?.data?.member?.name !== "fieldOfView" || runtimeBatch.results?.[6]?.result?.skipped !== true) {
   throw new Error(`bad runtime batch ${JSON.stringify(runtimeBatch, null, 2)}`);
 }
 if (!prepareTakeover.ok || prepareTakeover.reason !== "ready" || !prepareTakeover.readiness?.ok) {
@@ -536,6 +571,9 @@ if (!noMouseAudit.ok || noMouseAudit.policyTests?.ok !== true || noMouseAudit.ch
 }
 if (!controlMap.ok || controlMap.noMouseDefault !== true || controlMap.operationCount < 4 || controlMap.byFamily?.legal_action < 1 || controlMap.byFamily?.ui < 1 || controlMap.byFamily?.scene < 1 || controlMap.operations?.some(item => item.noMouse !== true || !item.call?.tool)) {
   throw new Error(`bad control map ${JSON.stringify(controlMap, null, 2)}`);
+}
+if (!noMouseCoverage.ok || noMouseCoverage.checks?.some(item => !item.ok) || noMouseCoverage.families?.some(item => !item.runtime?.ok)) {
+  throw new Error(`bad no-mouse coverage ${JSON.stringify(noMouseCoverage, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);
