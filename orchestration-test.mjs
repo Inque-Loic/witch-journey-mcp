@@ -487,8 +487,9 @@ send(50, "tools/call", { name: "witch_no_mouse_evidence_plan", arguments: { incl
 send(51, "tools/call", { name: "witch_no_mouse_probe_operation", arguments: { family: "battle", action: "play_card_target", dryRun: false, note: "orchestration probe" } });
 send(52, "tools/call", { name: "witch_no_mouse_collect_ready_evidence", arguments: { onlyMissing: false, dryRun: true, maxProbes: 6 } });
 send(53, "tools/call", { name: "witch_no_mouse_restart_collect_audit", arguments: { timeoutMs: 1000, pollMs: 50 } });
+send(54, "tools/call", { name: "witch_no_mouse_evidence_drive", arguments: { onlyMissing: false, dryRun: true, maxRounds: 1, maxProbesPerRound: 6, waitAfterMs: 0 } });
 
-for (let id = 2; id <= 53; id++) {
+for (let id = 2; id <= 54; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -556,8 +557,9 @@ const noMouseEvidencePlan = textResult(50);
 const noMouseProbeOperation = textResult(51);
 const noMouseCollectReadyEvidence = textResult(52);
 const noMouseRestartCollectAuditDenied = textResult(53);
+const noMouseEvidenceDrive = textResult(54);
 
-if (!capabilities.ok || capabilities.tools.length < 56 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 57 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -634,6 +636,9 @@ if (!noMouseCollectReadyEvidence.ok || noMouseCollectReadyEvidence.dryRun !== tr
 }
 if (noMouseRestartCollectAuditDenied?.reason !== "restart_confirmation_required" || noMouseRestartCollectAuditDenied?.nextStep !== "confirm_restart") {
   throw new Error(`restart collect audit did not require confirmation ${JSON.stringify(noMouseRestartCollectAuditDenied, null, 2)}`);
+}
+if (!noMouseEvidenceDrive.ok || noMouseEvidenceDrive.dryRun !== true || !["already_complete", "complete", "max_rounds"].includes(noMouseEvidenceDrive.reason) || (noMouseEvidenceDrive.reason === "max_rounds" && noMouseEvidenceDrive.rounds?.[0]?.collection?.selectedCount < 1)) {
+  throw new Error(`bad no-mouse evidence drive ${JSON.stringify(noMouseEvidenceDrive, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);
