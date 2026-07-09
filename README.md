@@ -72,7 +72,7 @@
 
 ## 工具能力
 
-当前 MCP server 暴露 48 个工具，覆盖：
+当前 MCP server 暴露 49 个工具，覆盖：
 
 - 桥接状态检查、等待、重启编排
 - 本地运行时诊断、Mod 文件检查、桥文件新旧检查
@@ -80,7 +80,7 @@
 - UI 快照、UI 点击和交互
 - 场景对象快照、场景交互、raycast
 - 截图、窗口聚焦、本地 OS 输入兜底
-- 游戏合法动作、出牌、合法动作匹配、有边界的自动驾驶
+- 游戏合法动作、战斗快照、出牌、合法动作匹配、有边界的自动驾驶
 - 运行时类型/对象检查、组件成员枚举、组件方法 dry-run/确认调用、组件属性 dry-run/确认写入、静态运行时方法调用
 - 观察-规划-执行辅助，例如 `witch_control_map`、`witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
 - 无鼠标能力审计和运行时覆盖矩阵，例如 `witch_no_mouse_audit`、`witch_no_mouse_coverage`
@@ -94,6 +94,7 @@ MCP 默认不使用 OS 鼠标。也就是说：
 - `witch_perform_action_match` / `witch_auto_step` / `witch_auto_drive` 走游戏自己的合法动作层。
 - `witch_ui_interact` 和 `witch_ui_click_label` 走游戏内 UI 自动化，即使 action 名叫 `click`，也不是移动 Windows 鼠标。
 - `witch_scene_interact` 走游戏内场景自动化，也不是移动 Windows 鼠标。
+- `witch_battle_snapshot` 可以观察战斗手牌和可选目标，`witch_play_card` 可以按卡牌/目标参数出牌，不需要移动鼠标去点卡牌。
 - `witch_input_mouse` 和 `witch_bridge_command` 里的 `input.mouse` 默认返回 `mouse_forbidden`，不会触发 `SetCursorPos` 或 `mouse_event`。
 
 如果确实要临时恢复 OS 鼠标兜底，可以设置环境变量 `WITCH_JOURNEY_NO_MOUSE=0`，或单次调用 `witch_input_mouse` 时传 `noMouse:false`。不建议把它作为自动接管路径。

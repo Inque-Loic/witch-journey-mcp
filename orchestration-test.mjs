@@ -241,6 +241,24 @@ const bridge = http.createServer((request, response) => {
         performedActions += 1;
         result = { ok: true, data: { Success: true, ActionId: payload.params.actionId } };
         break;
+      case "battle.snapshot":
+        result = {
+          ok: true,
+          data: {
+            capturedAtUtc: new Date().toISOString(),
+            inBattle: true,
+            cardCount: 1,
+            targetCount: 1,
+            cards: [
+              { index: 0, cardIndex: 0, cardId: "spark", instanceId: 501, objectName: "Spark", playCardCall: { tool: "witch_play_card", arguments: { cardIndex: 0, cardId: "spark" } } }
+            ],
+            targets: [
+              { index: 0, targetIndex: 0, targetName: "Slime", instanceId: 601, objectName: "Slime" }
+            ],
+            supportedActions: ["play_card"]
+          }
+        };
+        break;
       case "ui.interact":
         result = { ok: true, data: { Success: true, Selector: payload.params.selector } };
         break;
@@ -518,7 +536,7 @@ const noMouseAudit = textResult(44);
 const controlMap = textResult(45);
 const noMouseCoverage = textResult(46);
 
-if (!capabilities.ok || capabilities.tools.length < 48 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 49 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -569,7 +587,7 @@ if (policyDeniedAutoStep?.ok !== false || policyDeniedAutoStep?.reason !== "acti
 if (!noMouseAudit.ok || noMouseAudit.policyTests?.ok !== true || noMouseAudit.checks?.some(item => !item.ok)) {
   throw new Error(`bad no-mouse audit ${JSON.stringify(noMouseAudit, null, 2)}`);
 }
-if (!controlMap.ok || controlMap.noMouseDefault !== true || controlMap.operationCount < 4 || controlMap.byFamily?.legal_action < 1 || controlMap.byFamily?.ui < 1 || controlMap.byFamily?.scene < 1 || controlMap.operations?.some(item => item.noMouse !== true || !item.call?.tool)) {
+if (!controlMap.ok || controlMap.noMouseDefault !== true || controlMap.operationCount < 5 || controlMap.byFamily?.legal_action < 1 || controlMap.byFamily?.ui < 1 || controlMap.byFamily?.scene < 1 || controlMap.byFamily?.battle < 1 || controlMap.operations?.some(item => item.noMouse !== true || !item.call?.tool)) {
   throw new Error(`bad control map ${JSON.stringify(controlMap, null, 2)}`);
 }
 if (!noMouseCoverage.ok || noMouseCoverage.checks?.some(item => !item.ok) || noMouseCoverage.families?.some(item => !item.runtime?.ok)) {

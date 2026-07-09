@@ -71,6 +71,11 @@ Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "ui_operatio
 Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "scene_operations" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report scene operations as no-mouse" $audit
 Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "battle_card_operations" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report battle card operations as no-mouse" $audit
 
+Write-Host "Checking battle snapshot is available without mouse..."
+$battleSnapshot = Invoke-WitchMcpJson witch_battle_snapshot @{ maxCards = 20; maxTargets = 20 }
+Assert-Field ($battleSnapshot.ok -eq $true) "witch_battle_snapshot did not return ok=true" $battleSnapshot
+Assert-Field (@($battleSnapshot.supportedActions) -contains "play_card") "witch_battle_snapshot did not advertise play_card" $battleSnapshot
+
 Write-Host "Checking current control map uses no-mouse calls..."
 $controlMap = Invoke-WitchMcpJson witch_control_map @{ includeHidden = $false; onlyInteractive = $true }
 Assert-Field ($controlMap.ok -eq $true) "witch_control_map did not return ok=true" $controlMap

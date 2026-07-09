@@ -156,6 +156,23 @@ function commandResult(command, params) {
     case "game.perform_action":
       performedActions += 1;
       return { ok: true, data: { Success: true, ActionId: params.actionId } };
+    case "battle.snapshot":
+      return {
+        ok: true,
+        data: {
+          capturedAtUtc: new Date().toISOString(),
+          inBattle: true,
+          cardCount: 1,
+          targetCount: 1,
+          cards: [
+            { index: 0, cardIndex: 0, cardId: "spark", instanceId: 501, objectName: "Spark", playCardCall: { tool: "witch_play_card", arguments: { cardIndex: 0, cardId: "spark" } } }
+          ],
+          targets: [
+            { index: 0, targetIndex: 0, targetName: "Slime", instanceId: 601, objectName: "Slime" }
+          ],
+          supportedActions: ["play_card"]
+        }
+      };
     default:
       return { ok: false, error: `unexpected ${command}` };
   }

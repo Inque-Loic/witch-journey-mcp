@@ -29,7 +29,8 @@ const BRIDGE_MARKERS = [
   "runtime.component_members",
   "runtime.component_call",
   "runtime.component_set",
-  "runtime.invoke_static"
+  "runtime.invoke_static",
+  "battle.snapshot"
 ];
 const LOCAL_OS_FALLBACK_COMMANDS = new Set([
   "screen.info",
@@ -233,6 +234,7 @@ const tools = [
         onlyInteractive: { type: "boolean", default: true },
         includeUi: { type: "boolean", default: true },
         includeScene: { type: "boolean", default: true },
+        includeBattle: { type: "boolean", default: true },
         includeLegalActions: { type: "boolean", default: true }
       },
       additionalProperties: false
@@ -249,6 +251,7 @@ const tools = [
         includeActions: { type: "boolean", default: true },
         includeUi: { type: "boolean", default: true },
         includeScene: { type: "boolean", default: true },
+        includeBattle: { type: "boolean", default: true },
         includeUnsupported: { type: "boolean", default: true },
         maxActions: { type: "integer", default: 200 },
         maxUiNodes: { type: "integer", default: 200 },
@@ -696,6 +699,19 @@ const tools = [
     }
   },
   {
+    name: "witch_battle_snapshot",
+    description: "Capture battle hand cards and target candidates for no-mouse card play. Uses battle.snapshot when the bridge supports it and falls back to runtime object inspection.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeInactive: { type: "boolean", default: false },
+        maxCards: { type: "integer", default: 40 },
+        maxTargets: { type: "integer", default: 40 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_runtime_inspect",
     description: "Ask the in-game bridge to inspect loaded runtime types and members, useful for discovering hidden automation/debug/control surfaces.",
     inputSchema: {
@@ -1004,6 +1020,8 @@ function toolToBridge(name, args) {
       return { command: "game.legal_actions", params: args || {} };
     case "witch_perform_action":
       return { command: "game.perform_action", params: args || {} };
+    case "witch_battle_snapshot":
+      return { command: "battle.snapshot", params: args || {} };
     case "witch_play_card":
       return { command: "battle.play_card", params: args || {} };
     case "witch_runtime_inspect":
@@ -1164,6 +1182,9 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_control_map") {
       return toolResult(id, await collectControlMap(args));
+    }
+    if (toolName === "witch_battle_snapshot") {
+      return toolResult(id, await collectBattleSnapshot(args));
     }
     if (toolName === "witch_state_summary") {
       return toolResult(id, await collectStateSummary(args));
@@ -1638,6 +1659,7 @@ function localCapabilities() {
       "input.mouse",
       "game.legal_actions",
       "game.perform_action",
+      "battle.snapshot",
       "battle.play_card",
       "runtime.inspect",
       "runtime.objects",
@@ -1658,6 +1680,7 @@ function localCapabilities() {
         "witch_auto_step",
         "witch_control_map",
         "witch_no_mouse_coverage",
+        "witch_battle_snapshot",
         "witch_ui_interact",
         "witch_ui_click_label",
         "witch_scene_interact",
@@ -1681,6 +1704,7 @@ function localCapabilities() {
       "Use witch_state_summary for compact decision context before acting.",
       "Use witch_control_map when Codex needs every current legal/UI/scene operation mapped to no-mouse MCP calls, not just the recommended next step.",
       "Use witch_auto_step and witch_auto_drive for bounded autonomous play loops based only on game-reported legal actions.",
+      "Use witch_battle_snapshot before witch_play_card to observe hand cards and target candidates without OS mouse input.",
       "Use witch_batch to run bounded observe-plan-act sequences; it defaults to dry-run for action tools.",
       "Use witch_takeover_step for a single evidence-rich takeover loop that waits for the bridge, focuses the window, captures visual evidence, plans, and optionally acts.",
       "Use witch_takeover_drive for a bounded multi-step takeover loop after reviewing stop conditions.",
@@ -1917,8 +1941,8 @@ function noMouseCoverageFamilies(runtimeServices, currentState) {
     },
     {
       name: "battle_card_operations",
-      requiredTools: ["witch_play_card"],
-      bridgeCommands: ["battle.play_card"],
+      requiredTools: ["witch_battle_snapshot", "witch_play_card"],
+      bridgeCommands: ["battle.snapshot", "battle.play_card"],
       runtime: runtimeServices.battle,
       currentMappedOperations: byFamily.battle || 0,
       noMousePath: "battle card automation"
@@ -1952,9 +1976,9 @@ function noMouseOperationFamilies() {
     {
       name: "battle_card_operations",
       noMouse: true,
-      tools: ["witch_play_card"],
-      bridgeCommands: ["battle.play_card"],
-      evidence: "Uses Witch.UI.Automation.RuntimeBattleAutomationService by card id, instance id, hand index, and optional target selectors."
+      tools: ["witch_battle_snapshot", "witch_play_card"],
+      bridgeCommands: ["battle.snapshot", "battle.play_card"],
+      evidence: "Observes hand/target candidates without mouse, then uses Witch.UI.Automation.RuntimeBattleAutomationService by card id, instance id, hand index, and optional target selectors."
     },
     {
       name: "runtime_control",
@@ -2185,6 +2209,7 @@ async function takeoverAudit(args) {
     "witch_scene_snapshot",
     "witch_scene_interact",
     "witch_scene_raycast",
+    "witch_battle_snapshot",
     "witch_screen_info",
     "witch_screen_capture",
     "witch_screen_capture_wait",
@@ -3093,6 +3118,9 @@ async function collectGameSnapshot(args) {
   if (args?.includeScene !== false) {
     tasks.push(["scene", safeCallBridge("scene.snapshot", { includeInactive: false, onlyInteractive: args?.onlyInteractive !== false })]);
   }
+  if (args?.includeBattle !== false) {
+    tasks.push(["battle", collectBattleSnapshot(args || {})]);
+  }
   if (args?.includeLegalActions !== false) {
     tasks.push(["legalActions", safeCallBridge("game.legal_actions", {})]);
   }
@@ -3106,12 +3134,104 @@ async function collectGameSnapshot(args) {
   return snapshot;
 }
 
+async function collectBattleSnapshot(args) {
+  const direct = await safeCallBridge("battle.snapshot", {
+    includeInactive: !!args?.includeInactive,
+    maxCards: limit(args?.maxCards, 40),
+    maxTargets: limit(args?.maxTargets, 40)
+  });
+  if (direct?.ok === true) {
+    const snapshot = direct?.data && typeof direct.data === "object" ? direct.data : direct;
+    return {
+      ...snapshot,
+      ok: snapshot?.ok !== false,
+      source: snapshot?.source || "battle.snapshot",
+      bridgeSnapshot: direct?.data ? { ok: true, command: direct.command } : undefined
+    };
+  }
+
+  const fallback = await collectBattleSnapshotFromRuntime(args || {});
+  return {
+    ...fallback,
+    bridgeSnapshot: direct?.ok === false ? direct : undefined
+  };
+}
+
+async function collectBattleSnapshotFromRuntime(args) {
+  const maxCards = limit(args?.maxCards, 40);
+  const maxTargets = limit(args?.maxTargets, 40);
+  const includeInactive = !!args?.includeInactive;
+  const [cardObjects, statusTargets, enemyTargets] = await Promise.all([
+    safeCallBridge("runtime.objects", { componentType: "CardItem", includeInactive, maxObjects: maxCards }),
+    safeCallBridge("runtime.objects", { componentType: "StatusManager", includeInactive, maxObjects: maxTargets }),
+    safeCallBridge("runtime.objects", { componentType: "EnemyItem", includeInactive, maxObjects: maxTargets })
+  ]);
+
+  const cards = runtimeObjectsFrom(cardObjects).slice(0, maxCards).map((item, index) => ({
+    index,
+    cardIndex: index,
+    cardId: null,
+    instanceId: firstComponentInstanceId(item, "CardItem"),
+    objectInstanceId: item.instanceId,
+    objectName: item.name,
+    path: item.path,
+    activeInHierarchy: item.activeInHierarchy,
+    components: item.components,
+    playCardCall: { tool: "witch_play_card", arguments: { cardIndex: index } }
+  }));
+
+  const seenTargets = new Set();
+  const targets = [];
+  for (const item of [...runtimeObjectsFrom(statusTargets), ...runtimeObjectsFrom(enemyTargets)]) {
+    const key = item.instanceId || item.path || item.name;
+    if (seenTargets.has(key)) continue;
+    seenTargets.add(key);
+    const index = targets.length;
+    targets.push({
+      index,
+      targetIndex: index,
+      targetName: item.name,
+      instanceId: firstComponentInstanceId(item, "StatusManager") || firstComponentInstanceId(item, "EnemyItem"),
+      objectInstanceId: item.instanceId,
+      objectName: item.name,
+      path: item.path,
+      activeInHierarchy: item.activeInHierarchy,
+      components: item.components
+    });
+    if (targets.length >= maxTargets) break;
+  }
+
+  return {
+    ok: cardObjects?.ok !== false && statusTargets?.ok !== false && enemyTargets?.ok !== false,
+    capturedAtUtc: new Date().toISOString(),
+    source: "runtime.objects",
+    inBattle: cards.length > 0 || targets.length > 0,
+    cardCount: cards.length,
+    targetCount: targets.length,
+    cards,
+    targets,
+    supportedActions: ["play_card"],
+    runtimeQueries: { cards: cardObjects, statusTargets, enemyTargets }
+  };
+}
+
+function runtimeObjectsFrom(result) {
+  return Array.isArray(result?.data?.objects) ? result.data.objects : [];
+}
+
+function firstComponentInstanceId(object, componentName) {
+  const components = Array.isArray(object?.components) ? object.components : [];
+  const found = components.find(component => containsText(component?.name, componentName) || containsText(component?.type, componentName));
+  return Number.isInteger(found?.instanceId) ? found.instanceId : null;
+}
+
 async function collectControlMap(args) {
   const snapshot = await collectGameSnapshot({
     includeHidden: !!args?.includeHidden,
     onlyInteractive: args?.onlyInteractive !== false,
     includeUi: args?.includeUi !== false,
     includeScene: args?.includeScene !== false,
+    includeBattle: args?.includeBattle !== false,
     includeLegalActions: args?.includeActions !== false
   });
 
@@ -3209,6 +3329,37 @@ async function collectControlMap(args) {
     });
   }
 
+  if (args?.includeBattle !== false) {
+    const battle = snapshot.battle?.data || snapshot.battle;
+    const cards = Array.isArray(battle?.cards) ? battle.cards : [];
+    const targets = Array.isArray(battle?.targets) ? battle.targets : [];
+    cards.slice(0, limit(args?.maxCards, 200)).forEach((card, cardIndex) => {
+      const baseArgs = compactPlayCardArgs(card, cardIndex);
+      operations.push({
+        id: "battle:card:" + (card.instanceId || card.cardId || cardIndex),
+        family: "battle",
+        action: "play_card",
+        label: card.cardId || card.objectName || card.path || String(cardIndex),
+        noMouse: true,
+        ready: true,
+        target: card,
+        call: { tool: "witch_play_card", arguments: baseArgs }
+      });
+      targets.slice(0, limit(args?.maxTargets, 50)).forEach((target, targetIndex) => {
+        operations.push({
+          id: "battle:card:" + (card.instanceId || card.cardId || cardIndex) + ":target:" + (target.instanceId || target.targetName || targetIndex),
+          family: "battle",
+          action: "play_card_target",
+          label: (card.cardId || card.objectName || String(cardIndex)) + " -> " + (target.targetName || target.objectName || String(targetIndex)),
+          noMouse: true,
+          ready: true,
+          target: { card, target },
+          call: { tool: "witch_play_card", arguments: { ...baseArgs, ...compactPlayTargetArgs(target, targetIndex) } }
+        });
+      });
+    });
+  }
+
   const byFamily = {};
   for (const operation of operations) {
     byFamily[operation.family] = (byFamily[operation.family] || 0) + 1;
@@ -3227,7 +3378,9 @@ async function collectControlMap(args) {
     snapshotSummary: {
       phase: snapshot.legalActions?.data?.Phase || snapshot.legalActions?.data?.phase || null,
       uiNodeCount: arrayValue(snapshot.ui?.data || snapshot.ui, "Nodes").length,
-      sceneObjectCount: arrayValue(snapshot.scene?.data || snapshot.scene, "Objects").length
+      sceneObjectCount: arrayValue(snapshot.scene?.data || snapshot.scene, "Objects").length,
+      battleCardCount: Number((snapshot.battle?.data || snapshot.battle)?.cardCount || 0),
+      battleTargetCount: Number((snapshot.battle?.data || snapshot.battle)?.targetCount || 0)
     }
   };
 }
@@ -3625,6 +3778,22 @@ function compactSceneSelector(object) {
   return selector;
 }
 
+function compactPlayCardArgs(card, fallbackIndex) {
+  return pruneUndefined({
+    cardInstanceId: Number.isInteger(card?.instanceId) ? card.instanceId : undefined,
+    cardId: card?.cardId || undefined,
+    cardIndex: Number.isInteger(card?.cardIndex) ? card.cardIndex : fallbackIndex
+  });
+}
+
+function compactPlayTargetArgs(target, fallbackIndex) {
+  return pruneUndefined({
+    targetInstanceId: Number.isInteger(target?.instanceId) ? target.instanceId : undefined,
+    targetName: target?.targetName || target?.objectName || undefined,
+    targetIndex: Number.isInteger(target?.targetIndex) ? target.targetIndex : fallbackIndex
+  });
+}
+
 function pruneUndefined(obj) {
   for (const key of Object.keys(obj)) {
     if (obj[key] === undefined) delete obj[key];
@@ -3957,6 +4126,8 @@ async function executeBatchStep(step, options) {
       return collectGameSnapshot(args);
     case "witch_control_map":
       return collectControlMap(args);
+    case "witch_battle_snapshot":
+      return collectBattleSnapshot(args);
     case "witch_state_summary":
       return collectStateSummary(args);
     case "witch_plan_next":
@@ -4108,6 +4279,10 @@ function typeRank(type) {
 
 function normalizeText(value) {
   return String(value || "").trim().toLocaleLowerCase();
+}
+
+function containsText(value, query) {
+  return normalizeText(value).includes(normalizeText(query));
 }
 
 function clampInt(value, fallback, min, max) {

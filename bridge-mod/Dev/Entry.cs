@@ -323,6 +323,8 @@ namespace CodexMcpBridge
                     return InvokeStatic("Witch.UI.Automation.RuntimeGameplayAutomationService", "GetLegalActions");
                 case "game.perform_action":
                     return InvokeStatic("Witch.UI.Automation.RuntimeGameplayAutomationService", "PerformActionAsync", BuildPerformActionRequest(args));
+                case "battle.snapshot":
+                    return CaptureBattleSnapshot(args);
                 case "battle.play_card":
                     return InvokeStatic("Witch.UI.Automation.RuntimeBattleAutomationService", "PlayCardAsync", BuildPlayCardRequest(args));
                 case "runtime.inspect":
@@ -1975,6 +1977,251 @@ namespace CodexMcpBridge
             Set(obj, "TargetName", Value<string>(args, "targetName", null));
             Set(obj, "TargetIndex", NullableInt(args, "targetIndex"));
             return obj;
+        }
+
+        private static object CaptureBattleSnapshot(JObject args)
+        {
+            var includeInactive = Value(args, "includeInactive", false);
+            var maxCards = Math.Max(0, Math.Min(100, Value(args, "maxCards", 40)));
+            var maxTargets = Math.Max(0, Math.Min(100, Value(args, "maxTargets", 40)));
+            var cards = new List<object>();
+            var targets = new List<object>();
+            var cardIndex = 0;
+            var targetIndex = 0;
+
+            foreach (var component in FindComponents(includeInactive))
+            {
+                if (component == null)
+                    continue;
+                var go = component.gameObject;
+                if (go == null || (!includeInactive && !go.activeInHierarchy))
+                    continue;
+                var type = component.GetType();
+                if (IsBattleCardComponent(type) && cards.Count < maxCards)
+                {
+                    cards.Add(DescribeBattleCard(component, cardIndex));
+                    cardIndex++;
+                }
+                else if (IsBattleTargetComponent(type) && targets.Count < maxTargets)
+                {
+                    targets.Add(DescribeBattleTarget(component, targetIndex));
+                    targetIndex++;
+                }
+            }
+
+            return new
+            {
+                capturedAtUtc = DateTime.UtcNow.ToString("o"),
+                inBattle = cards.Count > 0 || targets.Count > 0,
+                cardCount = cards.Count,
+                targetCount = targets.Count,
+                cards,
+                targets,
+                supportedActions = new[] { "play_card" }
+            };
+        }
+
+        private static object DescribeBattleCard(UnityEngine.Component component, int index)
+        {
+            var go = component.gameObject;
+            var values = ReadNamedValues(component, new[]
+            {
+                "Id", "id", "CardId", "cardId", "Type", "type", "CardType", "cardType", "Name", "name",
+                "Index", "index", "Cost", "cost", "CanUse", "canUse", "isLine", "isReverse", "ignore", "draging"
+            }, 300);
+            var data = ReadNestedNamedValues(component, new[] { "DataConfig", "dataConfig", "data", "Data" }, new[]
+            {
+                "Id", "id", "Name", "name", "Title", "title", "Type", "type", "Cost", "cost", "Description", "description", "Note", "note"
+            }, 300);
+            var cardId = FirstStringValue(values, data, new[] { "CardId", "cardId", "Id", "id" });
+            return new
+            {
+                index,
+                cardIndex = index,
+                cardId,
+                instanceId = component.GetInstanceID(),
+                objectInstanceId = go.GetInstanceID(),
+                objectName = go.name,
+                componentType = component.GetType().FullName,
+                path = TransformPath(go.transform),
+                activeInHierarchy = go.activeInHierarchy,
+                values,
+                data,
+                playCardCall = new
+                {
+                    tool = "witch_play_card",
+                    arguments = string.IsNullOrWhiteSpace(cardId)
+                        ? new { cardIndex = (int?)index, cardInstanceId = (int?)null, cardId = (string)null }
+                        : new { cardIndex = (int?)index, cardInstanceId = (int?)component.GetInstanceID(), cardId }
+                }
+            };
+        }
+
+        private static object DescribeBattleTarget(UnityEngine.Component component, int index)
+        {
+            var go = component.gameObject;
+            var values = ReadNamedValues(component, new[]
+            {
+                "Id", "id", "InstanceId", "instanceId", "Name", "name", "Hp", "hp", "HP", "MaxHp", "maxHp",
+                "Health", "health", "Shield", "shield", "State", "state", "isDead", "dead"
+            }, 300);
+            var data = ReadNestedNamedValues(component, new[] { "fatherObject", "FatherObject", "data", "Data", "DataConfig", "dataConfig" }, new[]
+            {
+                "Id", "id", "Name", "name", "Type", "type", "Hp", "hp", "MaxHp", "maxHp", "Description", "description"
+            }, 300);
+            var targetName = FirstStringValue(values, data, new[] { "Name", "name", "Id", "id" });
+            return new
+            {
+                index,
+                targetIndex = index,
+                targetName,
+                instanceId = component.GetInstanceID(),
+                objectInstanceId = go.GetInstanceID(),
+                objectName = go.name,
+                componentType = component.GetType().FullName,
+                path = TransformPath(go.transform),
+                activeInHierarchy = go.activeInHierarchy,
+                values,
+                data
+            };
+        }
+
+        private static UnityEngine.Component[] FindComponents(bool includeInactive)
+        {
+            var components = new List<UnityEngine.Component>();
+            foreach (var go in FindGameObjects(includeInactive))
+            {
+                if (go == null || (!includeInactive && !go.activeInHierarchy))
+                    continue;
+                components.AddRange(go.GetComponents<UnityEngine.Component>());
+            }
+            return components.ToArray();
+        }
+
+        private static bool IsBattleCardComponent(Type type)
+        {
+            if (type == null)
+                return false;
+            return ContainsIgnoreCase(type.Name, "CardItem") || ContainsIgnoreCase(type.FullName, ".CardItem");
+        }
+
+        private static bool IsBattleTargetComponent(Type type)
+        {
+            if (type == null)
+                return false;
+            return EqualsIgnoreCase(type.Name, "StatusManager")
+                || ContainsIgnoreCase(type.FullName, ".StatusManager")
+                || ContainsIgnoreCase(type.Name, "EnemyItem")
+                || ContainsIgnoreCase(type.FullName, ".EnemyItem");
+        }
+
+        private static Dictionary<string, object> ReadNamedValues(object obj, string[] names, int maxStringLength)
+        {
+            var values = new Dictionary<string, object>();
+            if (obj == null)
+                return values;
+            var type = obj.GetType();
+            for (var i = 0; i < names.Length; i++)
+            {
+                var name = names[i];
+                if (values.ContainsKey(name))
+                    continue;
+                var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (prop != null && prop.CanRead && prop.GetIndexParameters().Length == 0)
+                {
+                    values[name] = ReadMemberValue(() => prop.GetValue(obj, null), prop.PropertyType, maxStringLength);
+                    continue;
+                }
+                var field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (field != null)
+                    values[name] = ReadMemberValue(() => field.GetValue(obj), field.FieldType, maxStringLength);
+            }
+            return values;
+        }
+
+        private static Dictionary<string, object> ReadNestedNamedValues(object obj, string[] containerNames, string[] names, int maxStringLength)
+        {
+            var result = new Dictionary<string, object>();
+            if (obj == null)
+                return result;
+            var type = obj.GetType();
+            for (var i = 0; i < containerNames.Length; i++)
+            {
+                object nested = null;
+                var containerName = containerNames[i];
+                var prop = type.GetProperty(containerName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (prop != null && prop.CanRead && prop.GetIndexParameters().Length == 0)
+                    nested = SafeGet(() => prop.GetValue(obj, null));
+                if (nested == null)
+                {
+                    var field = type.GetField(containerName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                    if (field != null)
+                        nested = SafeGet(() => field.GetValue(obj));
+                }
+                if (nested == null)
+                    continue;
+                var values = ReadNamedValues(nested, names, maxStringLength);
+                foreach (var item in values)
+                    result[containerName + "." + item.Key] = item.Value;
+            }
+            return result;
+        }
+
+        private delegate object ObjectReader();
+
+        private static object SafeGet(ObjectReader reader)
+        {
+            try
+            {
+                return reader();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string FirstStringValue(Dictionary<string, object> primary, Dictionary<string, object> secondary, string[] names)
+        {
+            for (var i = 0; i < names.Length; i++)
+            {
+                var value = ExtractStringValue(primary, names[i]);
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+                value = ExtractStringValue(secondary, names[i]);
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+            }
+            foreach (var item in secondary)
+            {
+                for (var i = 0; i < names.Length; i++)
+                {
+                    if (!item.Key.EndsWith("." + names[i], StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var value = ExtractStringValue(secondary, item.Key);
+                    if (!string.IsNullOrWhiteSpace(value))
+                        return value;
+                }
+            }
+            return null;
+        }
+
+        private static string ExtractStringValue(Dictionary<string, object> values, string key)
+        {
+            if (values == null || !values.ContainsKey(key) || values[key] == null)
+                return null;
+            var str = values[key] as string;
+            if (str != null)
+                return str;
+            var dict = values[key] as IDictionary<string, object>;
+            if (dict != null)
+            {
+                if (dict.ContainsKey("text") && dict["text"] != null)
+                    return Convert.ToString(dict["text"]);
+                if (dict.ContainsKey("name") && dict["name"] != null)
+                    return Convert.ToString(dict["name"]);
+            }
+            return Convert.ToString(values[key]);
         }
 
         private static object BuildPoint(JObject args)

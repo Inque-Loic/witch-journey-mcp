@@ -102,7 +102,7 @@ Assert-Field ($restartDenied.reason -eq "restart_confirmation_required") "witch_
 Write-Host "6. Calling witch_capabilities through MCP..."
 $capabilities = Invoke-WitchMcpJson witch_capabilities
 Assert-WitchOk $capabilities "witch_capabilities"
-Assert-Field (@($capabilities.tools).Count -ge 48) "witch_capabilities returned too few tools" $capabilities
+Assert-Field (@($capabilities.tools).Count -ge 49) "witch_capabilities returned too few tools" $capabilities
 
 Write-Host "7. Calling witch_runtime_diagnostics through MCP..."
 $diagnostics = Invoke-WitchMcpJson witch_runtime_diagnostics @{ includeLogTail = $false }
@@ -226,7 +226,12 @@ Write-Host "31. Calling witch_legal_actions through MCP..."
 $legalActions = Invoke-WitchMcpJson witch_legal_actions
 Assert-WitchOk $legalActions "witch_legal_actions"
 
-Write-Host "32. Calling witch_auto_step dry run through MCP..."
+Write-Host "32. Calling witch_battle_snapshot through MCP..."
+$battleSnapshot = Invoke-WitchMcpJson witch_battle_snapshot @{ maxCards = 20; maxTargets = 20 }
+Assert-WitchOk $battleSnapshot "witch_battle_snapshot"
+Assert-Field ($battleSnapshot.supportedActions -contains "play_card") "witch_battle_snapshot did not advertise play_card" $battleSnapshot
+
+Write-Host "33. Calling witch_auto_step dry run through MCP..."
 $autoStep = Invoke-WitchMcpJson witch_auto_step @{ dryRun = $true; includeLegalActions = $true }
 if ($autoStep.ok -eq $true) {
   Assert-Field ($autoStep.dryRun -eq $true) "witch_auto_step did not remain dry-run" $autoStep
@@ -235,10 +240,10 @@ if ($autoStep.ok -eq $true) {
   Assert-Field ($autoStep.legalActions.ok -eq $true) "witch_auto_step no_legal_actions did not include a successful legal-action snapshot" $autoStep
 }
 
-Write-Host "33. Verifying action policy denial through MCP..."
+Write-Host "34. Verifying action policy denial through MCP..."
 Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-action-policy.ps1")
 
-Write-Host "34. Verifying no-mouse policy through MCP..."
+Write-Host "35. Verifying no-mouse policy through MCP..."
 Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-no-mouse-policy.ps1")
 
 Write-Host "ok: bridge and MCP tool path responded"
