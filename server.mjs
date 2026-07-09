@@ -110,7 +110,10 @@ const tools = [
       properties: {
         dryRun: { type: "boolean", default: true },
         confirm: { type: "string", description: "Required as SYNC_BRIDGE_ARTIFACTS when dryRun is false." },
-        includeDiagnostics: { type: "boolean", default: true }
+        includeDiagnostics: { type: "boolean", default: true },
+        waitForUnlock: { type: "boolean", default: false },
+        timeoutMs: { type: "integer", default: 60000 },
+        pollMs: { type: "integer", default: 1000 }
       },
       additionalProperties: false
     }
@@ -3804,17 +3807,33 @@ async function syncBridgeArtifacts(args) {
   }
 
   const before = args?.includeDiagnostics === false ? null : await runtimeDiagnostics({ includeLogTail: false });
-  const sync = await syncUpdatedBridgeDllToDataRoot({ dryRun });
+  const waitForUnlock = !dryRun && args?.waitForUnlock === true;
+  const timeoutMs = Math.max(0, Math.min(24 * 60 * 60 * 1000, Number(args?.timeoutMs ?? 60000)));
+  const pollMs = Math.max(100, Math.min(60000, Number(args?.pollMs ?? 1000)));
+  const startedAt = Date.now();
+  const attempts = [];
+  let sync = await syncUpdatedBridgeDllToDataRoot({ dryRun });
+  attempts.push({ elapsedMs: 0, sync });
+  while (waitForUnlock && sync?.ok !== true && sync?.reason === "copy_failed" && Date.now() - startedAt < timeoutMs) {
+    await new Promise(resolve => setTimeout(resolve, pollMs));
+    sync = await syncUpdatedBridgeDllToDataRoot({ dryRun: false });
+    attempts.push({ elapsedMs: Date.now() - startedAt, sync });
+  }
   const after = args?.includeDiagnostics === false ? null : await runtimeDiagnostics({ includeLogTail: false });
   const processRunning = after?.process?.running === true || before?.process?.running === true;
   const loadedBridgeMayNeedRestart = sync?.ok === true && processRunning && !dryRun;
   const syncFailed = sync?.ok !== true;
+  const timedOut = waitForUnlock && syncFailed && Date.now() - startedAt >= timeoutMs;
   return {
     ok: sync?.ok === true,
     dryRun,
     reason: sync?.ok === true
-      ? (dryRun ? "sync_ready" : "synced")
-      : (sync?.reason || "sync_failed"),
+      ? (dryRun ? "sync_ready" : (attempts.length > 1 ? "synced_after_wait" : "synced"))
+      : (timedOut ? "sync_wait_timeout" : (sync?.reason || "sync_failed")),
+    waitForUnlock,
+    timedOut,
+    waitedMs: Date.now() - startedAt,
+    attempts,
     sync,
     diagnosticsBefore: before,
     diagnosticsAfter: after,
@@ -3824,7 +3843,9 @@ async function syncBridgeArtifacts(args) {
         ? "The file is ready for the next game load; the already-running process may still be using the previously loaded DLL until restart."
         : (dryRun ? "Dry-run only; no files were changed." : "The updated bridge file is present in the Data Mod directory.")),
     nextStep: syncFailed
-      ? (processRunning ? "Restart the game when you are ready, then run witch_sync_bridge_artifacts or witch_no_mouse_restart_collect_audit." : "Inspect sync.error and copy permissions, then run witch_sync_bridge_artifacts again.")
+      ? (timedOut
+        ? "Close the game to release the locked DLL, then run witch_sync_bridge_artifacts again or use waitForUnlock with a longer timeout."
+        : (processRunning ? "Restart the game when you are ready, then run witch_sync_bridge_artifacts or witch_no_mouse_restart_collect_audit." : "Inspect sync.error and copy permissions, then run witch_sync_bridge_artifacts again."))
       : loadedBridgeMayNeedRestart
       ? "Restart the game when you are ready, then run witch_no_mouse_restart_collect_audit."
       : "Run witch_no_mouse_completion_audit to verify the bridge artifact readiness requirement."

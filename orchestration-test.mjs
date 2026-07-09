@@ -651,7 +651,7 @@ if (!noMouseEvidenceDrive.ok || noMouseEvidenceDrive.dryRun !== true || !["alrea
 if (!noMouseWatchEvidence.ok || noMouseWatchEvidence.dryRun !== true || noMouseWatchEvidence.reason !== "already_complete" || noMouseWatchEvidence.complete !== true) {
   throw new Error(`bad no-mouse watch evidence ${JSON.stringify(noMouseWatchEvidence, null, 2)}`);
 }
-if (!bridgeArtifactSync.ok || bridgeArtifactSync.dryRun !== true || bridgeArtifactSync.reason !== "sync_ready" || bridgeArtifactSync.sync?.wouldCopy !== true || !bridgeArtifactSync.sync?.source || !bridgeArtifactSync.sync?.destination) {
+if (!bridgeArtifactSync.ok || bridgeArtifactSync.dryRun !== true || bridgeArtifactSync.reason !== "sync_ready" || bridgeArtifactSync.sync?.wouldCopy !== true || !bridgeArtifactSync.sync?.source || !bridgeArtifactSync.sync?.destination || bridgeArtifactSync.attempts?.length !== 1) {
   throw new Error(`bad bridge artifact sync ${JSON.stringify(bridgeArtifactSync, null, 2)}`);
 }
 if (!noMouseStateAdvanceDrive.ok || noMouseStateAdvanceDrive.dryRun !== true || noMouseStateAdvanceDrive.reason !== "already_complete" || noMouseStateAdvanceDrive.complete !== true) {

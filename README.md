@@ -137,7 +137,7 @@ npm run e2e-fake
 powershell -ExecutionPolicy Bypass -File .\wait-and-verify.ps1 -TimeoutSec 180 -IntervalSec 2
 ```
 
-如果只想先确认或同步新版桥接 DLL 到游戏 Data Mod 目录，而不关闭/重启游戏，可以调用 MCP 工具 `witch_sync_bridge_artifacts`。该工具默认 `dryRun:true`，真实复制需要 `dryRun:false` 且传入 `confirm:"SYNC_BRIDGE_ARTIFACTS"`。如果游戏已经在运行，同步后的 DLL 通常要等下一次重启游戏才会被当前进程加载。
+如果只想先确认或同步新版桥接 DLL 到游戏 Data Mod 目录，而不关闭/重启游戏，可以调用 MCP 工具 `witch_sync_bridge_artifacts`。该工具默认 `dryRun:true`，真实复制需要 `dryRun:false` 且传入 `confirm:"SYNC_BRIDGE_ARTIFACTS"`。如果目标 DLL 被正在运行的游戏占用，可以传 `waitForUnlock:true`、`timeoutMs` 和 `pollMs`，让工具在你关闭游戏释放文件后自动重试同步。同步后的 DLL 通常要等下一次重启游戏才会被当前进程加载。
 
 如果希望脚本自动重启游戏、等待桥上线、执行审计和完整验证：
 
