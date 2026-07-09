@@ -2956,7 +2956,7 @@ async function noMouseEvidencePlan(args) {
 
 function stateAdvanceCandidatesFromOperations(operations, missingOperationTypes) {
   const missingFamilies = new Set((missingOperationTypes || []).map(item => item.family));
-  const candidates = (operations || [])
+  const sortedCandidates = (operations || [])
     .filter(operation => operation?.noMouse === true && operation?.ready !== false && operation?.call?.tool !== "witch_input_mouse")
     .filter(operation => !isSystemUiStateAdvanceOperation(operation))
     .filter(operation => !isPassiveUiStateAdvanceOperation(operation))
@@ -2972,8 +2972,42 @@ function stateAdvanceCandidatesFromOperations(operations, missingOperationTypes)
       };
     })
     .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score || String(a.operation.label || "").localeCompare(String(b.operation.label || "")));
-  return candidates.slice(0, 12);
+    .sort((a, b) =>
+      b.score - a.score ||
+      stateAdvanceActionRank(a.operation.action) - stateAdvanceActionRank(b.operation.action) ||
+      String(a.operation.label || "").localeCompare(String(b.operation.label || ""))
+    );
+  const deduped = [];
+  const seenTargets = new Set();
+  for (const candidate of sortedCandidates) {
+    const key = stateAdvanceTargetKey(candidate.operation);
+    if (seenTargets.has(key)) continue;
+    seenTargets.add(key);
+    deduped.push(candidate);
+  }
+  return deduped.slice(0, 12);
+}
+
+function stateAdvanceActionRank(action) {
+  switch (normalizeActionName(action || "")) {
+    case "click":
+    case "perform":
+    case "play_card":
+    case "play_card_target":
+      return 0;
+    case "submit":
+      return 1;
+    default:
+      return 5;
+  }
+}
+
+function stateAdvanceTargetKey(operation) {
+  const selector = operation?.call?.arguments?.selector || {};
+  const target = operation?.target || {};
+  const stableTarget = selector.nodeId || selector.instanceId || selector.transformPath || target.nodeId || target.instanceId || target.objectId || target.transformPath || operation?.label;
+  if (stableTarget) return String(operation?.family || "unknown") + ":" + String(stableTarget);
+  return String(operation?.family || "unknown") + ":" + String(operation?.id || "").replace(/:(click|submit|hover|drag|scroll)$/i, "");
 }
 
 function isSystemUiStateAdvanceOperation(operation) {
