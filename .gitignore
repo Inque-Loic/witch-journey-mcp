@@ -7,4 +7,7 @@ STATUS.md
 *.log
 *.png
 .witch-no-mouse-evidence.json
+no-mouse-proof*.json
+witch-no-mouse-proof*.json
+proof-bundles/
 !bridge-mod/Icon.png

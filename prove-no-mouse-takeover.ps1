@@ -172,6 +172,7 @@ function Write-ProofBundle {
   $bundle | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $resolved -Encoding UTF8
   Write-Host ""
   Write-Host ("Proof bundle written: " + $resolved)
+  Write-Host "Proof bundles may include current game state, labels, and candidate operation ids; review before sharing."
 }
 
 $argsForTool = @{

@@ -172,7 +172,7 @@ powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -ConfirmR
 powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -OutputPath .\no-mouse-proof.json
 ```
 
-证明包会包含严格审计结果、缺失项、状态推进候选和完整 MCP 返回结果，方便之后复查。它是本地文件，默认不会上传到 GitHub。
+证明包会包含严格审计结果、缺失项、状态推进候选和完整 MCP 返回结果，方便之后复查。它是本地文件；仓库已忽略 `no-mouse-proof*.json`、`witch-no-mouse-proof*.json` 和 `proof-bundles/`，避免常见证明包误上传。如果你把 `-OutputPath` 指到其他文件名或仓库外路径，请按自己的隐私需求管理。
 
 ## 构建桥接 DLL
 
