@@ -103,6 +103,29 @@ const tools = [
     }
   },
   {
+    name: "witch_no_mouse_restart_collect_audit",
+    description: "Confirmed restart orchestration for the no-mouse goal: restart the game, wait for the bridge, record no-mouse evidence, collect ready probes, and run the strict completion audit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        confirm: { type: "string", description: "Required as RESTART_WITCH_GAME to close/restart the current game process." },
+        gracefulCloseTimeoutMs: { type: "integer", default: 8000 },
+        timeoutMs: { type: "integer", default: 120000 },
+        pollMs: { type: "integer", default: 1000 },
+        logTailLines: { type: "integer", default: 120 },
+        includeScreenshot: { type: "boolean", default: false },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        collectOnlyMissing: { type: "boolean", default: true },
+        maxProbes: { type: "integer", default: 8 },
+        dryRunProbes: { type: "boolean", default: true },
+        probeConfirm: { type: "string", description: "Required as EXECUTE_NO_MOUSE_PROBES when dryRunProbes is false." },
+        includePlan: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_capabilities",
     description: "Describe the available MCP tools, bridge commands, UI actions, scene actions, and wait conditions without requiring the game bridge to be online.",
     inputSchema: {
@@ -1314,6 +1337,9 @@ async function handleRequest(request) {
     if (toolName === "witch_restart_and_watch_bridge") {
       return toolResult(id, await restartAndWatchBridge(args));
     }
+    if (toolName === "witch_no_mouse_restart_collect_audit") {
+      return toolResult(id, await restartCollectNoMouseAudit(args));
+    }
     if (toolName === "witch_verify_readiness") {
       return toolResult(id, await verifyReadiness(args));
     }
@@ -1650,6 +1676,93 @@ async function restartAndWatchBridge(args) {
     watch,
     nextStep: watch?.nextStep,
     recommendation: watch?.recommendation
+  };
+}
+
+async function restartCollectNoMouseAudit(args) {
+  if (args?.confirm !== "RESTART_WITCH_GAME") {
+    const diagnostics = await runtimeDiagnostics({ includeLogTail: false });
+    return {
+      ok: false,
+      reason: "restart_confirmation_required",
+      nextStep: "confirm_restart",
+      recommendation: "Re-run witch_no_mouse_restart_collect_audit with confirm:\"RESTART_WITCH_GAME\" after saving any in-game progress you care about.",
+      diagnostics
+    };
+  }
+
+  const restart = await restartAndWatchBridge({
+    confirm: "RESTART_WITCH_GAME",
+    gracefulCloseTimeoutMs: args?.gracefulCloseTimeoutMs ?? 8000,
+    timeoutMs: args?.timeoutMs ?? 120000,
+    pollMs: args?.pollMs ?? 1000,
+    logTailLines: args?.logTailLines ?? 120,
+    runAuditWhenReady: true,
+    includeScreenshot: args?.includeScreenshot === true,
+    includeRuntimeInspect: true,
+    includeLowLevelRuntimeChecks: true,
+    includeLocalOsFallbackChecks: true
+  });
+
+  if (!restart.ok) {
+    return {
+      ok: false,
+      reason: restart.reason || "restart_watch_failed",
+      restart,
+      nextStep: restart.nextStep || "inspect_restart_watch",
+      recommendation: restart.recommendation || "Inspect restart.watch and Player.log evidence."
+    };
+  }
+
+  const stateEvidence = await recordNoMouseEvidence({
+    note: "post-restart no-mouse state sample",
+    includePolicyTests: false,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+  const probeCollection = await collectReadyNoMouseEvidence({
+    dryRun: args?.dryRunProbes !== false,
+    confirm: args?.probeConfirm,
+    onlyMissing: args?.collectOnlyMissing !== false,
+    maxProbes: args?.maxProbes ?? 8,
+    recordEvidence: true,
+    recordStateSample: false,
+    includePlan: args?.includePlan !== false,
+    includeControlMap: false,
+    includePostAudit: false,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+  const completionAudit = await noMouseCompletionAudit({
+    includePolicyTests: true,
+    includeCurrentState: true,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+  const evidencePlan = args?.includePlan === false ? null : await noMouseEvidencePlan({
+    includePolicyTests: true,
+    includeCurrentState: true,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+
+  return {
+    ok: completionAudit.complete === true,
+    complete: completionAudit.complete === true,
+    reason: completionAudit.complete === true ? "no_mouse_complete" : "no_mouse_evidence_still_missing",
+    restarted: true,
+    dryRunProbes: args?.dryRunProbes !== false,
+    restart,
+    stateEvidence,
+    probeCollection,
+    completionAudit,
+    evidencePlan,
+    nextStep: completionAudit.complete === true
+      ? "goal_complete"
+      : "enter_missing_game_states_and_collect_evidence",
+    recommendation: completionAudit.complete === true
+      ? "The strict no-mouse audit is complete."
+      : "Use evidencePlan.operationProofSteps and requirementSteps to enter the missing game states, then run witch_no_mouse_collect_ready_evidence and witch_no_mouse_completion_audit again."
   };
 }
 
@@ -5326,6 +5439,8 @@ async function executeBatchStep(step, options) {
       return watchBridgeLoad(args);
     case "witch_restart_and_watch_bridge":
       return restartAndWatchBridge(args);
+    case "witch_no_mouse_restart_collect_audit":
+      return restartCollectNoMouseAudit(args);
     case "witch_prepare_takeover":
       return prepareTakeover({ ...args, restartIfRunning: false });
     case "witch_wait_bridge":
