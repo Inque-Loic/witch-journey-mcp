@@ -1488,6 +1488,15 @@ async function handleRequest(request) {
     if (toolName === "witch_perform_action") {
       return toolResult(id, await performLegalAction(args));
     }
+    if (toolName === "witch_scene_snapshot") {
+      return toolResult(id, await collectSceneSnapshot(args));
+    }
+    if (toolName === "witch_scene_interact") {
+      return toolResult(id, await interactScene(args));
+    }
+    if (toolName === "witch_scene_raycast") {
+      return toolResult(id, await raycastScene(args));
+    }
     if (toolName === "witch_battle_snapshot") {
       return toolResult(id, await collectBattleSnapshot(args));
     }
@@ -4869,7 +4878,7 @@ async function collectGameSnapshot(args) {
     tasks.push(["ui", safeCallBridge("ui.snapshot", { includeHidden: !!args?.includeHidden })]);
   }
   if (args?.includeScene !== false) {
-    tasks.push(["scene", safeCallBridge("scene.snapshot", { includeInactive: false, onlyInteractive: args?.onlyInteractive !== false })]);
+    tasks.push(["scene", collectSceneSnapshot({ includeInactive: false, onlyInteractive: args?.onlyInteractive !== false })]);
   }
   if (args?.includeBattle !== false) {
     tasks.push(["battle", collectBattleSnapshot(args || {})]);
@@ -4910,28 +4919,44 @@ async function collectBattleSnapshot(args) {
   };
 }
 
+async function collectSceneSnapshot(args) {
+  const params = {
+    includeInactive: !!args?.includeInactive,
+    onlyInteractive: args?.onlyInteractive !== false
+  };
+  const direct = await safeCallBridge("scene.snapshot", params);
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "scene.snapshot")) {
+    return direct;
+  }
+
+  return invokeAutomationStaticFallback("scene.snapshot", "Witch.UI.Automation.RuntimeSceneAutomationService", "CaptureSnapshot", [params], direct);
+}
+
+async function interactScene(args) {
+  const direct = await safeCallBridge("scene.interact", args || {});
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "scene.interact")) {
+    return direct;
+  }
+
+  return invokeAutomationStaticFallback("scene.interact", "Witch.UI.Automation.RuntimeSceneAutomationService", "InteractAsync", [args || {}], direct);
+}
+
+async function raycastScene(args) {
+  const direct = await safeCallBridge("scene.raycast", args || {});
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "scene.raycast")) {
+    return direct;
+  }
+
+  return invokeAutomationStaticFallback("scene.raycast", "Witch.UI.Automation.RuntimeSceneAutomationService", "Raycast", [args || {}], direct);
+}
+
 async function playBattleCard(args) {
   const direct = await safeCallBridge("battle.play_card", args || {});
   if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "battle.play_card")) {
     return direct;
   }
 
-  const fallbackArgs = {
-    typeName: "Witch.UI.Automation.RuntimeBattleAutomationService",
-    methodName: "PlayCardAsync",
-    arguments: [args || {}]
-  };
-  const fallback = await safeCallBridge("runtime.invoke_static", fallbackArgs);
-  return {
-    ...fallback,
-    ok: fallback?.ok !== false,
-    source: "runtime.invoke_static",
-    fallbackFrom: "battle.play_card",
-    fallbackReason: "bridge_command_unavailable",
-    direct,
-    runtimeCall: fallbackArgs,
-    runtimeResult: fallback
-  };
+  return invokeAutomationStaticFallback("battle.play_card", "Witch.UI.Automation.RuntimeBattleAutomationService", "PlayCardAsync", [args || {}], direct);
 }
 
 async function collectLegalActions(args) {
@@ -4940,24 +4965,7 @@ async function collectLegalActions(args) {
     return direct;
   }
 
-  const fallbackArgs = {
-    typeName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
-    methodName: "GetLegalActions",
-    arguments: []
-  };
-  const fallback = await safeCallBridge("runtime.invoke_static", fallbackArgs);
-  const data = fallback?.data?.result || fallback?.result?.result || fallback?.data;
-  return {
-    ...fallback,
-    ok: fallback?.ok !== false,
-    data,
-    source: "runtime.invoke_static",
-    fallbackFrom: "game.legal_actions",
-    fallbackReason: "bridge_command_unavailable",
-    direct,
-    runtimeCall: fallbackArgs,
-    runtimeResult: fallback
-  };
+  return invokeAutomationStaticFallback("game.legal_actions", "Witch.UI.Automation.RuntimeGameplayAutomationService", "GetLegalActions", [], direct);
 }
 
 async function performLegalAction(args) {
@@ -4966,10 +4974,14 @@ async function performLegalAction(args) {
     return direct;
   }
 
+  return invokeAutomationStaticFallback("game.perform_action", "Witch.UI.Automation.RuntimeGameplayAutomationService", "PerformActionAsync", [args || {}], direct);
+}
+
+async function invokeAutomationStaticFallback(command, typeName, methodName, args, direct) {
   const fallbackArgs = {
-    typeName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
-    methodName: "PerformActionAsync",
-    arguments: [args || {}]
+    typeName,
+    methodName,
+    arguments: args
   };
   const fallback = await safeCallBridge("runtime.invoke_static", fallbackArgs);
   const data = fallback?.data?.result || fallback?.result?.result || fallback?.data;
@@ -4978,7 +4990,7 @@ async function performLegalAction(args) {
     ok: fallback?.ok !== false,
     data,
     source: "runtime.invoke_static",
-    fallbackFrom: "game.perform_action",
+    fallbackFrom: command,
     fallbackReason: "bridge_command_unavailable",
     direct,
     runtimeCall: fallbackArgs,
@@ -6618,7 +6630,7 @@ async function executeRecommendedCall(call, options) {
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
       }
-      return callBridge("scene.interact", args);
+      return interactScene(args);
     case "witch_play_card":
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
@@ -6783,7 +6795,9 @@ async function executeBatchStep(step, options) {
     case "witch_ui_snapshot":
       return safeCallBridge("ui.snapshot", { scope: args.scope || "", includeHidden: !!args.includeHidden });
     case "witch_scene_snapshot":
-      return safeCallBridge("scene.snapshot", { includeInactive: !!args.includeInactive, onlyInteractive: args.onlyInteractive !== false });
+      return collectSceneSnapshot(args);
+    case "witch_scene_raycast":
+      return raycastScene(args);
     case "witch_screen_info":
       return safeCallBridge("screen.info", {});
     case "witch_runtime_inspect":

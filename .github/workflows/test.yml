@@ -32,6 +32,7 @@ jobs:
           node --check .\bridge-sync-test.mjs
           node --check .\bridge-sync-lock-test.mjs
           node --check .\legal-action-fallback-test.mjs
+          node --check .\scene-fallback-test.mjs
           node --check .\battle-play-card-fallback-test.mjs
           node --check .\no-mouse-guidance-test.mjs
           node --check .\verify-end-to-end-fake.mjs
