@@ -83,6 +83,18 @@ function bridgeResult(command) {
               ActiveInHierarchy: true,
               SupportedActions: ["click", "submit"],
               ScreenRect: { X: 500, Y: 10, Width: 40, Height: 40 }
+            },
+            {
+              NodeId: "TopBarUI|Canvas/TopBarUI/Content/PlayerStatus/Relic/Scroll Area/List/Null|202",
+              InstanceId: 202,
+              Label: "确认，就它了！",
+              WindowName: "TopBarUI",
+              TransformPath: "Canvas/TopBarUI/Content/PlayerStatus/Relic/Scroll Area/List/Null",
+              Clickable: true,
+              Visible: true,
+              ActiveInHierarchy: true,
+              SupportedActions: ["click", "submit", "hover"],
+              ScreenRect: { X: 550, Y: 10, Width: 40, Height: 40 }
             }
           ]
         }

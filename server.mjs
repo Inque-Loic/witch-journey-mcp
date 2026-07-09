@@ -3213,7 +3213,7 @@ function isSystemUiStateAdvanceOperation(operation) {
     operation?.call?.arguments?.selector?.windowName,
     operation?.call?.arguments?.selector?.transformPath
   ].filter(Boolean).join(" "));
-  return /(topbarui|\/topbarui\/|\/buttons\/(?:exitgame|setting|cardback|illustration|achievement|archive|gallery|save|load)|exitgame|setting)/i.test(structuralText);
+  return /(topbarui|\/topbarui\/|playerstatus|fightstatus|\/relic\/|\/varlist\/|\/buttons\/(?:exitgame|setting|cardback|illustration|achievement|archive|gallery|save|load)|exitgame|setting)/i.test(structuralText);
 }
 
 function isPassiveUiStateAdvanceOperation(operation) {
@@ -5182,17 +5182,21 @@ async function collectBattleSnapshotFromRuntime(args) {
     });
     if (targets.length >= maxTargets) break;
   }
+  const activeCardCount = cards.filter(item => item.activeInHierarchy !== false).length;
+  const activeTargetCount = targets.filter(item => item.activeInHierarchy !== false).length;
 
   return {
     ok: cardObjects?.ok !== false && statusTargets?.ok !== false && enemyTargets?.ok !== false,
     capturedAtUtc: new Date().toISOString(),
     source: "runtime.objects",
-    inBattle: cards.length > 0 || targets.length > 0,
+    inBattle: activeCardCount > 0 || activeTargetCount > 0,
     cardCount: cards.length,
     targetCount: targets.length,
+    activeCardCount,
+    activeTargetCount,
     cards,
     targets,
-    supportedActions: targets.length > 0 ? ["play_card", "play_card_target"] : ["play_card"],
+    supportedActions: activeTargetCount > 0 ? ["play_card", "play_card_target"] : ["play_card"],
     runtimeQueries: { cards: cardObjects, statusTargets, enemyTargets }
   };
 }
