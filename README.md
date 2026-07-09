@@ -100,6 +100,7 @@ MCP 默认不使用 OS 鼠标。也就是说：
 - `witch_ui_snapshot`、`witch_ui_interact`、`witch_ui_click_label`、`witch_ui_wait` 走游戏内 UI 自动化，即使 action 名叫 `click`，也不是移动 Windows 鼠标；如果旧桥接还不认识 `ui.*` 命令，MCP 会尝试通过 `RuntimeUiAutomationService` 走 runtime fallback。
 - `witch_scene_snapshot`、`witch_scene_interact`、`witch_scene_raycast` 走游戏内场景自动化，也不是移动 Windows 鼠标；如果旧桥接还不认识 `scene.*` 命令，MCP 会尝试通过 `RuntimeSceneAutomationService` 走 runtime fallback。
 - `witch_battle_snapshot` 可以观察战斗手牌和可选目标，`witch_play_card` 可以按卡牌/目标参数出牌，不需要移动鼠标去点卡牌；如果运行中的旧桥接还不认识 `battle.play_card`，MCP 会尝试通过 `RuntimeBattleAutomationService.PlayCardAsync` 走 runtime fallback。
+- `witch_control_map` 还会暴露少量白名单 `runtime_action`，例如地图管理器和战斗管理器上的无参流程方法。这类操作默认 `ready:false`，只能 dry-run 预览；真实执行必须显式传 `dryRun:false` 和 `confirm:"CALL_WITCH_COMPONENT_METHOD"`，避免误触发状态切换。
 - `witch_input_mouse` 和 `witch_bridge_command` 里的 `input.mouse` 默认返回 `mouse_forbidden`，不会触发 `SetCursorPos` 或 `mouse_event`。
 
 严格完成度审计会区分“能力路径可用”和“全部游戏状态已经证明”。如果运行中的旧桥接没有新版 `battle.snapshot` 或部分 `ui.*`、`scene.*`、`game.*` 命令，但本轮采样已经能通过直接命令或 runtime fallback 完成 UI、场景、合法动作观察，并且能通过 runtime 对战斗状态做等价观察，`witch_no_mouse_completion_audit` 会把这些路径作为能力证据；不过它仍然要求 UI、合法动作、场景、战斗等操作族都留下真实现场样本，证据不足时仍会返回 `complete:false`。

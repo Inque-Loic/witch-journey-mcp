@@ -488,10 +488,13 @@ const tools = [
         includeUi: { type: "boolean", default: true },
         includeScene: { type: "boolean", default: true },
         includeBattle: { type: "boolean", default: true },
+        includeRuntimeActions: { type: "boolean", default: true },
         includeUnsupported: { type: "boolean", default: true },
         maxActions: { type: "integer", default: 200 },
         maxUiNodes: { type: "integer", default: 200 },
-        maxSceneObjects: { type: "integer", default: 200 }
+        maxSceneObjects: { type: "integer", default: 200 },
+        maxRuntimeActions: { type: "integer", default: 50 },
+        maxRuntimeObjects: { type: "integer", default: 20 }
       },
       additionalProperties: false
     }
@@ -518,7 +521,8 @@ const tools = [
         includeActions: { type: "boolean", default: true },
         includeUi: { type: "boolean", default: true },
         includeScene: { type: "boolean", default: true },
-        includeBattle: { type: "boolean", default: true }
+        includeBattle: { type: "boolean", default: true },
+        includeRuntimeActions: { type: "boolean", default: true }
       },
       additionalProperties: false
     }
@@ -5346,6 +5350,14 @@ async function collectControlMap(args) {
     });
   }
 
+  if (args?.includeRuntimeActions !== false) {
+    const runtimeActionOperations = await collectRuntimeActionOperations(args || {});
+    operations.push(...runtimeActionOperations.operations);
+    if (args?.includeUnsupported !== false) {
+      unmapped.push(...runtimeActionOperations.unmapped);
+    }
+  }
+
   const byFamily = {};
   for (const operation of operations) {
     byFamily[operation.family] = (byFamily[operation.family] || 0) + 1;
@@ -5366,9 +5378,100 @@ async function collectControlMap(args) {
       uiNodeCount: arrayValue(snapshot.ui?.data || snapshot.ui, "Nodes").length,
       sceneObjectCount: arrayValue(snapshot.scene?.data || snapshot.scene, "Objects").length,
       battleCardCount: Number((snapshot.battle?.data || snapshot.battle)?.cardCount || 0),
-      battleTargetCount: Number((snapshot.battle?.data || snapshot.battle)?.targetCount || 0)
+      battleTargetCount: Number((snapshot.battle?.data || snapshot.battle)?.targetCount || 0),
+      runtimeActionCount: byFamily.runtime_action || 0
     }
   };
+}
+
+async function collectRuntimeActionOperations(args) {
+  const specs = runtimeActionSpecs();
+  const maxPerComponent = limit(args?.maxRuntimeActions, 50);
+  const operations = [];
+  const unmapped = [];
+
+  for (const spec of specs) {
+    const result = await safeCallBridge("runtime.objects", {
+      componentType: spec.componentType,
+      includeInactive: !!args?.includeInactiveRuntimeActions,
+      maxObjects: limit(args?.maxRuntimeObjects, 20)
+    });
+    if (result?.ok === false) {
+      unmapped.push({ family: "runtime_action", reason: "runtime_objects_unavailable", componentType: spec.componentType, error: result.error || result.reason || result.message });
+      continue;
+    }
+    const objects = runtimeObjectsFrom(result).filter(item => item?.activeInHierarchy !== false);
+    for (const object of objects) {
+      for (const method of spec.methods) {
+        const id = "runtime:" + spec.componentType + ":" + (object.instanceId || object.path || object.name || "object") + ":" + method.name;
+        operations.push({
+          id,
+          family: "runtime_action",
+          action: method.action || method.name,
+          label: method.label || (spec.componentType + "." + method.name),
+          noMouse: true,
+          ready: false,
+          requiresArguments: ["dryRun_false_and_confirm_CALL_WITCH_COMPONENT_METHOD"],
+          target: {
+            componentType: spec.componentType,
+            methodName: method.name,
+            objectName: object.name,
+            instanceId: object.instanceId,
+            path: object.path,
+            activeInHierarchy: object.activeInHierarchy,
+            risk: method.risk || "state_changing"
+          },
+          call: {
+            tool: "witch_runtime_component_call",
+            arguments: {
+              componentType: spec.componentType,
+              instanceId: object.instanceId,
+              path: object.path,
+              methodName: method.name,
+              arguments: [],
+              dryRun: true
+            }
+          }
+        });
+        if (operations.length >= maxPerComponent) {
+          return { operations, unmapped };
+        }
+      }
+    }
+  }
+
+  return { operations, unmapped };
+}
+
+function runtimeActionSpecs() {
+  return [
+    {
+      componentType: "NormalMapManager",
+      methods: [
+        { name: "ShowMapSelect", action: "show_map_select", label: "显示地图选择" },
+        { name: "ReadyToChangeMap", action: "map_ready_to_change", label: "准备切换地图" },
+        { name: "CloseMapUI", action: "close_map_ui", label: "关闭地图界面" }
+      ]
+    },
+    {
+      componentType: "MapManager",
+      methods: [
+        { name: "CmdReadyToNextMap", action: "map_ready_to_next", label: "准备进入下一地图" },
+        { name: "CmdNextMap", action: "map_next", label: "进入下一地图" },
+        { name: "TryChange", action: "map_try_change", label: "尝试切换地图" },
+        { name: "CloseMapUI", action: "close_map_ui", label: "关闭地图界面" }
+      ]
+    },
+    {
+      componentType: "FightManager",
+      methods: [
+        { name: "ReadyToStart", action: "battle_ready_to_start", label: "准备开始战斗" },
+        { name: "EndPlayerturn", action: "battle_end_player_turn", label: "结束玩家回合" },
+        { name: "TurnEnd", action: "battle_turn_end", label: "结束回合" },
+        { name: "RpcFightCheck", action: "battle_check", label: "战斗检查" }
+      ]
+    }
+  ];
 }
 
 async function executeOperation(args) {
@@ -5379,10 +5482,13 @@ async function executeOperation(args) {
     includeUi: args?.includeUi !== false,
     includeScene: args?.includeScene !== false,
     includeBattle: args?.includeBattle !== false,
+    includeRuntimeActions: args?.includeRuntimeActions !== false,
     includeUnsupported: true,
     maxActions: 200,
     maxUiNodes: 200,
-    maxSceneObjects: 200
+    maxSceneObjects: 200,
+    maxRuntimeActions: 50,
+    maxRuntimeObjects: 20
   });
 
   if (!controlMap.ok) {
@@ -5411,10 +5517,11 @@ async function executeOperation(args) {
     };
   }
 
-  if (selected.ready === false && args?.allowIncomplete !== true && args?.arguments == null) {
+  const dryRun = args?.dryRun !== false;
+  if (!dryRun && selected.ready === false && args?.allowIncomplete !== true && args?.arguments == null) {
     return {
       ok: false,
-      dryRun: args?.dryRun !== false,
+      dryRun,
       reason: "operation_requires_arguments",
       selected,
       required: selected.requiresArguments || [],
@@ -5426,7 +5533,6 @@ async function executeOperation(args) {
     tool: selected.call.tool,
     arguments: { ...(selected.call.arguments || {}), ...(args?.arguments || {}) }
   };
-  const dryRun = args?.dryRun !== false;
   const response = {
     ok: true,
     dryRun,
