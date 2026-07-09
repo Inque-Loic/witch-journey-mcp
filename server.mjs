@@ -1485,6 +1485,9 @@ async function handleRequest(request) {
     if (toolName === "witch_battle_snapshot") {
       return toolResult(id, await collectBattleSnapshot(args));
     }
+    if (toolName === "witch_play_card") {
+      return toolResult(id, await playBattleCard(args));
+    }
     if (toolName === "witch_state_summary") {
       return toolResult(id, await collectStateSummary(args));
     }
@@ -4898,6 +4901,35 @@ async function collectBattleSnapshot(args) {
   };
 }
 
+async function playBattleCard(args) {
+  const direct = await safeCallBridge("battle.play_card", args || {});
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "battle.play_card")) {
+    return direct;
+  }
+
+  const fallbackArgs = {
+    typeName: "Witch.UI.Automation.RuntimeBattleAutomationService",
+    methodName: "PlayCardAsync",
+    arguments: [args || {}]
+  };
+  const fallback = await safeCallBridge("runtime.invoke_static", fallbackArgs);
+  return {
+    ...fallback,
+    ok: fallback?.ok !== false,
+    source: "runtime.invoke_static",
+    fallbackFrom: "battle.play_card",
+    fallbackReason: "bridge_command_unavailable",
+    direct,
+    runtimeCall: fallbackArgs,
+    runtimeResult: fallback
+  };
+}
+
+function isUnknownBridgeCommand(result, command) {
+  const text = String(result?.error || result?.message || result?.reason || "");
+  return result?.ok === false && text.toLowerCase().includes("unknown command") && text.includes(command);
+}
+
 async function collectBattleSnapshotFromRuntime(args) {
   const maxCards = limit(args?.maxCards, 40);
   const maxTargets = limit(args?.maxTargets, 40);
@@ -6530,7 +6562,7 @@ async function executeRecommendedCall(call, options) {
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
       }
-      return callBridge("battle.play_card", args);
+      return playBattleCard(args);
     case "witch_input_key":
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
