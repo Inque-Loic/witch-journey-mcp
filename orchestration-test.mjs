@@ -420,8 +420,9 @@ send(41, "tools/call", { name: "witch_watch_bridge_load", arguments: { timeoutMs
 send(42, "tools/call", { name: "witch_restart_and_watch_bridge", arguments: { timeoutMs: 1000, pollMs: 50 } });
 send(43, "tools/call", { name: "witch_auto_step", arguments: { dryRun: false, label: "open map", denyKinds: ["navigation"] } });
 send(44, "tools/call", { name: "witch_no_mouse_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
+send(45, "tools/call", { name: "witch_control_map", arguments: { includeHidden: false, onlyInteractive: true } });
 
-for (let id = 2; id <= 44; id++) {
+for (let id = 2; id <= 45; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -480,8 +481,9 @@ const bridgeLoadWatch = textResult(41);
 const restartAndWatchDenied = textResult(42);
 const policyDeniedAutoStep = textResult(43);
 const noMouseAudit = textResult(44);
+const controlMap = textResult(45);
 
-if (!capabilities.ok || capabilities.tools.length < 46 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 47 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -531,6 +533,9 @@ if (policyDeniedAutoStep?.ok !== false || policyDeniedAutoStep?.reason !== "acti
 }
 if (!noMouseAudit.ok || noMouseAudit.policyTests?.ok !== true || noMouseAudit.checks?.some(item => !item.ok)) {
   throw new Error(`bad no-mouse audit ${JSON.stringify(noMouseAudit, null, 2)}`);
+}
+if (!controlMap.ok || controlMap.noMouseDefault !== true || controlMap.operationCount < 4 || controlMap.byFamily?.legal_action < 1 || controlMap.byFamily?.ui < 1 || controlMap.byFamily?.scene < 1 || controlMap.operations?.some(item => item.noMouse !== true || !item.call?.tool)) {
+  throw new Error(`bad control map ${JSON.stringify(controlMap, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);

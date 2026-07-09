@@ -102,7 +102,7 @@ Assert-Field ($restartDenied.reason -eq "restart_confirmation_required") "witch_
 Write-Host "6. Calling witch_capabilities through MCP..."
 $capabilities = Invoke-WitchMcpJson witch_capabilities
 Assert-WitchOk $capabilities "witch_capabilities"
-Assert-Field (@($capabilities.tools).Count -ge 45) "witch_capabilities returned too few tools" $capabilities
+Assert-Field (@($capabilities.tools).Count -ge 47) "witch_capabilities returned too few tools" $capabilities
 
 Write-Host "7. Calling witch_runtime_diagnostics through MCP..."
 $diagnostics = Invoke-WitchMcpJson witch_runtime_diagnostics @{ includeLogTail = $false }
@@ -157,34 +157,40 @@ Write-Host "17. Calling witch_game_snapshot through MCP..."
 $snapshot = Invoke-WitchMcpJson witch_game_snapshot @{ includeHidden = $false; onlyInteractive = $true }
 Assert-WitchOk $snapshot "witch_game_snapshot"
 
-Write-Host "18. Calling witch_state_summary through MCP..."
+Write-Host "18. Calling witch_control_map through MCP..."
+$controlMap = Invoke-WitchMcpJson witch_control_map @{ includeHidden = $false; onlyInteractive = $true }
+Assert-WitchOk $controlMap "witch_control_map"
+$mouseMapped = @($controlMap.operations | Where-Object { $_.noMouse -ne $true -or $_.call.tool -eq "witch_input_mouse" })
+Assert-Field ($mouseMapped.Count -eq 0) "witch_control_map exposed a mouse-based operation" $controlMap
+
+Write-Host "19. Calling witch_state_summary through MCP..."
 $summary = Invoke-WitchMcpJson witch_state_summary @{ includeHidden = $false; onlyInteractive = $true }
 Assert-WitchOk $summary "witch_state_summary"
 
-Write-Host "19. Calling witch_plan_next through MCP..."
+Write-Host "20. Calling witch_plan_next through MCP..."
 $plan = Invoke-WitchMcpJson witch_plan_next @{ includeHidden = $false; onlyInteractive = $true }
 Assert-Field ($plan.ok -eq $true -or $plan.strategy -eq "observe") "witch_plan_next returned neither ok plan nor observe fallback" $plan
 
-Write-Host "20. Calling witch_execute_plan dry run through MCP..."
+Write-Host "21. Calling witch_execute_plan dry run through MCP..."
 $executePlan = Invoke-WitchMcpJson witch_execute_plan @{ dryRun = $true; includePostSummary = $false }
 Assert-WitchOk $executePlan "witch_execute_plan dry run"
 Assert-Field ($executePlan.dryRun -eq $true) "witch_execute_plan did not remain dry-run" $executePlan
 
-Write-Host "21. Calling witch_takeover_step dry run through MCP..."
+Write-Host "22. Calling witch_takeover_step dry run through MCP..."
 $takeoverStep = Invoke-WitchMcpJson witch_takeover_step @{ dryRun = $true; includeScreenshot = $true; includePostSummary = $false; bridgeTimeoutMs = 5000; bridgePollMs = 250; screenshotTimeoutMs = 5000; screenshotPollMs = 100 }
 Assert-WitchOk $takeoverStep "witch_takeover_step dry run"
 Assert-Field ($takeoverStep.dryRun -eq $true) "witch_takeover_step did not remain dry-run" $takeoverStep
 
-Write-Host "22. Calling witch_takeover_drive dry run through MCP..."
+Write-Host "23. Calling witch_takeover_drive dry run through MCP..."
 $takeoverDrive = Invoke-WitchMcpJson witch_takeover_drive @{ dryRun = $true; maxSteps = 3; includeScreenshot = $false; includePostSummary = $false; bridgeTimeoutMs = 5000; bridgePollMs = 250 }
 Assert-WitchOk $takeoverDrive "witch_takeover_drive dry run"
 Assert-Field ($takeoverDrive.dryRun -eq $true) "witch_takeover_drive did not remain dry-run" $takeoverDrive
 
-Write-Host "23. Calling witch_find_targets through MCP..."
+Write-Host "24. Calling witch_find_targets through MCP..."
 $targets = Invoke-WitchMcpJson witch_find_targets @{ query = ""; maxResults = 10 }
 Assert-WitchOk $targets "witch_find_targets"
 
-Write-Host "24. Calling witch_batch dry run through MCP..."
+Write-Host "25. Calling witch_batch dry run through MCP..."
 $batch = Invoke-WitchMcpJson witch_batch @{
   dryRun = $true
   steps = @(
@@ -195,32 +201,32 @@ $batch = Invoke-WitchMcpJson witch_batch @{
 }
 Assert-WitchOk $batch "witch_batch dry run"
 
-Write-Host "25. Calling witch_ui_snapshot through MCP..."
+Write-Host "26. Calling witch_ui_snapshot through MCP..."
 $uiSnapshot = Invoke-WitchMcpJson witch_ui_snapshot @{ includeHidden = $false }
 Assert-WitchOk $uiSnapshot "witch_ui_snapshot"
 
-Write-Host "26. Calling witch_scene_snapshot through MCP..."
+Write-Host "27. Calling witch_scene_snapshot through MCP..."
 $sceneSnapshot = Invoke-WitchMcpJson witch_scene_snapshot @{ onlyInteractive = $true }
 Assert-WitchOk $sceneSnapshot "witch_scene_snapshot"
 
-Write-Host "27. Calling witch_screen_info through MCP..."
+Write-Host "28. Calling witch_screen_info through MCP..."
 $screenInfo = Invoke-WitchMcpJson witch_screen_info
 Assert-WitchOk $screenInfo "witch_screen_info"
 
-Write-Host "28. Calling witch_screen_capture_wait through MCP..."
+Write-Host "29. Calling witch_screen_capture_wait through MCP..."
 $screenCapture = Invoke-WitchMcpJson witch_screen_capture_wait @{ timeoutMs = 5000; pollMs = 100 }
 Assert-WitchOk $screenCapture "witch_screen_capture_wait"
 Assert-Field ($screenCapture.sizeBytes -gt 0) "witch_screen_capture_wait did not produce a non-empty file" $screenCapture
 
-Write-Host "29. Calling witch_window_focus through MCP..."
+Write-Host "30. Calling witch_window_focus through MCP..."
 $focus = Invoke-WitchMcpJson witch_window_focus
 Assert-WitchOk $focus "witch_window_focus"
 
-Write-Host "30. Calling witch_legal_actions through MCP..."
+Write-Host "31. Calling witch_legal_actions through MCP..."
 $legalActions = Invoke-WitchMcpJson witch_legal_actions
 Assert-WitchOk $legalActions "witch_legal_actions"
 
-Write-Host "31. Calling witch_auto_step dry run through MCP..."
+Write-Host "32. Calling witch_auto_step dry run through MCP..."
 $autoStep = Invoke-WitchMcpJson witch_auto_step @{ dryRun = $true; includeLegalActions = $true }
 if ($autoStep.ok -eq $true) {
   Assert-Field ($autoStep.dryRun -eq $true) "witch_auto_step did not remain dry-run" $autoStep
@@ -229,10 +235,10 @@ if ($autoStep.ok -eq $true) {
   Assert-Field ($autoStep.legalActions.ok -eq $true) "witch_auto_step no_legal_actions did not include a successful legal-action snapshot" $autoStep
 }
 
-Write-Host "32. Verifying action policy denial through MCP..."
+Write-Host "33. Verifying action policy denial through MCP..."
 Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-action-policy.ps1")
 
-Write-Host "33. Verifying no-mouse policy through MCP..."
+Write-Host "34. Verifying no-mouse policy through MCP..."
 Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-no-mouse-policy.ps1")
 
 Write-Host "ok: bridge and MCP tool path responded"

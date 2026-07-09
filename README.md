@@ -72,7 +72,7 @@
 
 ## 工具能力
 
-当前 MCP server 暴露 46 个工具，覆盖：
+当前 MCP server 暴露 47 个工具，覆盖：
 
 - 桥接状态检查、等待、重启编排
 - 本地运行时诊断、Mod 文件检查、桥文件新旧检查
@@ -82,7 +82,7 @@
 - 截图、窗口聚焦、本地 OS 输入兜底
 - 游戏合法动作、出牌、合法动作匹配、有边界的自动驾驶
 - 运行时类型/对象检查、组件成员枚举、组件方法 dry-run/确认调用、组件属性 dry-run/确认写入、静态运行时方法调用
-- 观察-规划-执行辅助，例如 `witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
+- 观察-规划-执行辅助，例如 `witch_control_map`、`witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
 - 无鼠标能力审计，例如 `witch_no_mouse_audit`
 
 建议对接管循环、组件调用、组件写入、静态运行时调用先使用 dry-run，确认目标和参数后再执行真实动作。

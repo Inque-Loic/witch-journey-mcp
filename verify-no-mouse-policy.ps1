@@ -71,4 +71,11 @@ Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "ui_operatio
 Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "scene_operations" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report scene operations as no-mouse" $audit
 Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "battle_card_operations" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report battle card operations as no-mouse" $audit
 
+Write-Host "Checking current control map uses no-mouse calls..."
+$controlMap = Invoke-WitchMcpJson witch_control_map @{ includeHidden = $false; onlyInteractive = $true }
+Assert-Field ($controlMap.ok -eq $true) "witch_control_map did not return ok=true" $controlMap
+Assert-Field ($controlMap.noMouseDefault -eq $true) "witch_control_map did not advertise noMouseDefault=true" $controlMap
+$mouseMapped = @($controlMap.operations | Where-Object { $_.noMouse -ne $true -or $_.call.tool -eq "witch_input_mouse" })
+Assert-Field ($mouseMapped.Count -eq 0) "witch_control_map exposed a mouse-based operation" $controlMap
+
 Write-Host "ok: no-mouse policy refuses OS mouse entry points"

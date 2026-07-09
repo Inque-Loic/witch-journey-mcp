@@ -225,6 +225,25 @@ const tools = [
     }
   },
   {
+    name: "witch_control_map",
+    description: "Build a complete no-mouse operation map for the current state: legal actions, UI affordances, and scene affordances converted into ready MCP calls.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        includeActions: { type: "boolean", default: true },
+        includeUi: { type: "boolean", default: true },
+        includeScene: { type: "boolean", default: true },
+        includeUnsupported: { type: "boolean", default: true },
+        maxActions: { type: "integer", default: 200 },
+        maxUiNodes: { type: "integer", default: 200 },
+        maxSceneObjects: { type: "integer", default: 200 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_state_summary",
     description: "Capture a compact decision-oriented summary of the current game state: windows, clickable UI, scene interactables, legal actions, and a suggested next legal action.",
     inputSchema: {
@@ -1126,6 +1145,9 @@ async function handleRequest(request) {
     if (toolName === "witch_game_snapshot") {
       return toolResult(id, await collectGameSnapshot(args));
     }
+    if (toolName === "witch_control_map") {
+      return toolResult(id, await collectControlMap(args));
+    }
     if (toolName === "witch_state_summary") {
       return toolResult(id, await collectStateSummary(args));
     }
@@ -1617,6 +1639,7 @@ function localCapabilities() {
       allowedNoMouseInteractionTools: [
         "witch_perform_action_match",
         "witch_auto_step",
+        "witch_control_map",
         "witch_ui_interact",
         "witch_ui_click_label",
         "witch_scene_interact",
@@ -1638,6 +1661,7 @@ function localCapabilities() {
       "Use witch_takeover_audit for a requirement-style proof of local install state plus bridge-side takeover readiness.",
       "Use witch_legal_actions and witch_perform_action_match for explicit high-level gameplay actions.",
       "Use witch_state_summary for compact decision context before acting.",
+      "Use witch_control_map when Codex needs every current legal/UI/scene operation mapped to no-mouse MCP calls, not just the recommended next step.",
       "Use witch_auto_step and witch_auto_drive for bounded autonomous play loops based only on game-reported legal actions.",
       "Use witch_batch to run bounded observe-plan-act sequences; it defaults to dry-run for action tools.",
       "Use witch_takeover_step for a single evidence-rich takeover loop that waits for the bridge, focuses the window, captures visual evidence, plans, and optionally acts.",
@@ -1772,6 +1796,7 @@ function noMouseOperationFamilies() {
       noMouse: true,
       tools: [
         "witch_game_snapshot",
+        "witch_control_map",
         "witch_state_summary",
         "witch_plan_next",
         "witch_execute_plan",
@@ -1810,43 +1835,60 @@ async function runNoMousePolicyTests() {
 }
 
 async function collectNoMouseCurrentState(args) {
-  const summary = await collectStateSummary({
-    includeHidden: !!args?.includeHidden,
-    onlyInteractive: args?.onlyInteractive !== false
-  });
+  const [summary, controlMap] = await Promise.all([
+    collectStateSummary({
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    }),
+    collectControlMap({
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    })
+  ]);
   if (!summary.ok) {
     return {
       ok: false,
       message: "Current state could not be summarized.",
-      summary
+      summary,
+      controlMap
     };
   }
   const legalCount = Number(summary.legalActions?.count || 0);
   const uiCount = Number(summary.ui?.clickableNodes?.length || 0);
   const sceneCount = Number(summary.scene?.objects?.length || 0);
-  const hasNoMousePath = legalCount > 0 || uiCount > 0 || sceneCount > 0;
+  const mappedOperationCount = Number(controlMap?.operationCount || 0);
+  const hasNoMousePath = mappedOperationCount > 0 || legalCount > 0 || uiCount > 0 || sceneCount > 0;
   return {
     ok: true,
     message: hasNoMousePath
       ? "Current state exposes at least one no-mouse action path."
-      : "Current state is observable, but no legal action, clickable UI node, or interactive scene object is currently exposed.",
+      : "Current state is observable, but no legal action, UI affordance, scene affordance, or mapped operation is currently exposed.",
     hasNoMousePath,
     legalActionCount: legalCount,
     clickableUiCount: uiCount,
     interactiveSceneObjectCount: sceneCount,
+    mappedOperationCount,
+    readyMappedOperationCount: Number(controlMap?.readyOperationCount || 0),
+    unmappedCount: Number(controlMap?.unmappedCount || 0),
     recommendedCall: summary.suggestedNextAction
       ? { tool: "witch_perform_action_match", arguments: { actionId: summary.suggestedNextAction.id, contains: false } }
-      : (uiCount > 0
+      : (controlMap?.operations?.[0]?.call || (uiCount > 0
         ? { tool: "witch_ui_interact", arguments: { action: "click", selector: compactUiSelector(summary.ui.clickableNodes[0]) } }
         : (sceneCount > 0
           ? { tool: "witch_scene_interact", arguments: { action: "click", selector: compactSceneSelector(summary.scene.objects[0]) } }
-          : null)),
+          : null))),
     summary: {
       capturedAtUtc: summary.capturedAtUtc,
       phase: summary.legalActions?.phase,
       activeWindows: summary.ui?.activeWindows,
       sceneName: summary.scene?.sceneName
-    }
+    },
+    controlMap: controlMap?.ok ? {
+      operationCount: controlMap.operationCount,
+      readyOperationCount: controlMap.readyOperationCount,
+      unmappedCount: controlMap.unmappedCount,
+      byFamily: controlMap.byFamily
+    } : controlMap
   };
 }
 
@@ -1939,6 +1981,7 @@ async function takeoverAudit(args) {
     "witch_takeover_step",
     "witch_takeover_drive",
     "witch_game_snapshot",
+    "witch_control_map",
     "witch_state_summary",
     "witch_plan_next",
     "witch_execute_plan",
@@ -2873,6 +2916,132 @@ async function collectGameSnapshot(args) {
   return snapshot;
 }
 
+async function collectControlMap(args) {
+  const snapshot = await collectGameSnapshot({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    includeUi: args?.includeUi !== false,
+    includeScene: args?.includeScene !== false,
+    includeLegalActions: args?.includeActions !== false
+  });
+
+  if (!snapshot.ok) {
+    return {
+      ok: false,
+      capturedAtUtc: snapshot.capturedAtUtc,
+      error: "Unable to build control map because the bridge or one of the required snapshots failed.",
+      snapshot
+    };
+  }
+
+  const operations = [];
+  const unmapped = [];
+
+  if (args?.includeActions !== false) {
+    const actions = legalActionsFrom(snapshot.legalActions).slice(0, limit(args?.maxActions, 200));
+    actions.forEach((action, index) => {
+      const summarized = summarizeAction(action);
+      const callArgs = summarized.id ? { actionId: summarized.id, contains: false } : { index };
+      operations.push({
+        id: "legal:" + (summarized.id || index),
+        family: "legal_action",
+        action: summarized.kind || "perform",
+        label: summarized.label || summarized.id || String(index),
+        noMouse: true,
+        ready: true,
+        target: summarized,
+        call: { tool: "witch_perform_action_match", arguments: callArgs }
+      });
+    });
+  }
+
+  if (args?.includeUi !== false) {
+    const nodes = arrayValue(snapshot.ui?.data || snapshot.ui, "Nodes")
+      .filter(item => isUiOperationTarget(item, args || {}))
+      .slice(0, limit(args?.maxUiNodes, 200));
+    nodes.forEach((item, index) => {
+      const node = summarizeUiNode(item);
+      const selector = compactUiSelector(node);
+      const actions = uiActionsForNode(item);
+      if (!hasSelector(selector) || actions.length === 0) {
+        if (args?.includeUnsupported !== false) {
+          unmapped.push({ family: "ui", reason: !hasSelector(selector) ? "missing_selector" : "missing_supported_actions", target: node });
+        }
+        return;
+      }
+      actions.forEach(action => {
+        const requirement = extraArgumentsForUiAction(action);
+        operations.push({
+          id: "ui:" + (node.nodeId || node.instanceId || index) + ":" + action,
+          family: "ui",
+          action,
+          label: node.label || node.text || node.nodeId || node.transformPath || String(index),
+          noMouse: true,
+          ready: requirement.length === 0,
+          requiresArguments: requirement,
+          target: node,
+          selector,
+          call: { tool: "witch_ui_interact", arguments: { action, selector, ...placeholderUiArgs(action) } }
+        });
+      });
+    });
+  }
+
+  if (args?.includeScene !== false) {
+    const objects = arrayValue(snapshot.scene?.data || snapshot.scene, "Objects")
+      .filter(item => isSceneOperationTarget(item, args || {}))
+      .slice(0, limit(args?.maxSceneObjects, 200));
+    objects.forEach((item, index) => {
+      const object = summarizeSceneObject(item);
+      const selector = compactSceneSelector(object);
+      const actions = sceneActionsForObject(item);
+      if (!hasSelector(selector) || actions.length === 0) {
+        if (args?.includeUnsupported !== false) {
+          unmapped.push({ family: "scene", reason: !hasSelector(selector) ? "missing_selector" : "missing_supported_actions", target: object });
+        }
+        return;
+      }
+      actions.forEach(action => {
+        const requirement = extraArgumentsForSceneAction(action);
+        operations.push({
+          id: "scene:" + (object.objectId || object.instanceId || index) + ":" + action,
+          family: "scene",
+          action,
+          label: object.name || object.objectId || object.transformPath || String(index),
+          noMouse: true,
+          ready: requirement.length === 0,
+          requiresArguments: requirement,
+          target: object,
+          selector,
+          call: { tool: "witch_scene_interact", arguments: { action, selector, ...placeholderSceneArgs(action) } }
+        });
+      });
+    });
+  }
+
+  const byFamily = {};
+  for (const operation of operations) {
+    byFamily[operation.family] = (byFamily[operation.family] || 0) + 1;
+  }
+
+  return {
+    ok: true,
+    capturedAtUtc: snapshot.capturedAtUtc,
+    noMouseDefault: DEFAULT_NO_MOUSE,
+    operationCount: operations.length,
+    readyOperationCount: operations.filter(item => item.ready).length,
+    unmappedCount: unmapped.length,
+    byFamily,
+    operations,
+    unmapped,
+    snapshotSummary: {
+      phase: snapshot.legalActions?.data?.Phase || snapshot.legalActions?.data?.phase || null,
+      uiNodeCount: arrayValue(snapshot.ui?.data || snapshot.ui, "Nodes").length,
+      sceneObjectCount: arrayValue(snapshot.scene?.data || snapshot.scene, "Objects").length
+    }
+  };
+}
+
 async function collectStateSummary(args) {
   const snapshot = await collectGameSnapshot({
     includeHidden: !!args?.includeHidden,
@@ -2974,6 +3143,145 @@ function summarizeScene(scene, args) {
         supportedActions: fieldValue(item, "SupportedActions") ?? []
       }))
   };
+}
+
+function summarizeUiNode(item) {
+  return {
+    nodeId: fieldValue(item, "NodeId"),
+    label: fieldValue(item, "Label"),
+    text: fieldValue(item, "Text"),
+    windowName: fieldValue(item, "WindowName"),
+    transformPath: fieldValue(item, "TransformPath"),
+    instanceId: fieldValue(item, "InstanceId"),
+    visible: fieldValue(item, "Visible"),
+    interactable: fieldValue(item, "Interactable"),
+    clickable: fieldValue(item, "Clickable"),
+    screenRect: fieldValue(item, "ScreenRect"),
+    preferredClickPoint: fieldValue(item, "PreferredClickPoint"),
+    componentTypes: fieldValue(item, "ComponentTypes") ?? [],
+    supportedActions: fieldValue(item, "SupportedActions") ?? []
+  };
+}
+
+function summarizeSceneObject(item) {
+  return {
+    objectId: fieldValue(item, "ObjectId"),
+    name: fieldValue(item, "Name"),
+    instanceId: fieldValue(item, "InstanceId"),
+    transformPath: fieldValue(item, "TransformPath"),
+    sceneName: fieldValue(item, "SceneName"),
+    tag: fieldValue(item, "Tag"),
+    layer: fieldValue(item, "Layer"),
+    layerName: fieldValue(item, "LayerName"),
+    visible: fieldValue(item, "Visible"),
+    activeInHierarchy: fieldValue(item, "ActiveInHierarchy"),
+    interactive: fieldValue(item, "Interactive"),
+    hasCollider3D: fieldValue(item, "HasCollider3D"),
+    hasCollider2D: fieldValue(item, "HasCollider2D"),
+    hasPointerHandler: fieldValue(item, "HasPointerHandler"),
+    screenPoint: fieldValue(item, "ScreenPoint") ?? fieldValue(item, "CenterScreenPoint"),
+    screenRect: fieldValue(item, "ScreenRect"),
+    componentTypes: fieldValue(item, "ComponentTypes") ?? [],
+    supportedActions: fieldValue(item, "SupportedActions") ?? []
+  };
+}
+
+function isUiOperationTarget(item, args) {
+  if (!args.includeHidden && fieldValue(item, "Visible") === false) return false;
+  if (fieldValue(item, "ActiveInHierarchy") === false) return false;
+  if (args.onlyInteractive === false) return true;
+  return fieldValue(item, "Clickable") === true || normalizedActions(item).length > 0 || isEditableUiNode(item);
+}
+
+function isSceneOperationTarget(item, args) {
+  if (!args.includeHidden && fieldValue(item, "Visible") === false) return false;
+  if (fieldValue(item, "ActiveInHierarchy") === false) return false;
+  if (args.onlyInteractive === false) return true;
+  return fieldValue(item, "Interactive") !== false && (fieldValue(item, "HasCollider3D") === true || fieldValue(item, "HasCollider2D") === true || fieldValue(item, "HasPointerHandler") === true || normalizedActions(item).length > 0);
+}
+
+function uiActionsForNode(item) {
+  const actions = normalizedActions(item);
+  if (actions.length > 0) return actions;
+  if (fieldValue(item, "Clickable") === true) return ["click"];
+  if (isEditableUiNode(item)) return ["set_text"];
+  return [];
+}
+
+function sceneActionsForObject(item) {
+  const actions = normalizedActions(item);
+  if (actions.length > 0) return actions;
+  if (fieldValue(item, "Interactive") !== false) return ["click"];
+  return [];
+}
+
+function normalizedActions(item) {
+  const actions = fieldValue(item, "SupportedActions") ?? [];
+  if (!Array.isArray(actions)) return [];
+  return [...new Set(actions.map(action => normalizeActionName(action)).filter(Boolean))];
+}
+
+function isEditableUiNode(item) {
+  if (fieldValue(item, "Interactable") === false) return false;
+  const componentTypes = fieldValue(item, "ComponentTypes") ?? [];
+  if (!Array.isArray(componentTypes)) return false;
+  return componentTypes.some(type => /inputfield|tmp_inputfield|textfield/i.test(String(type || "")));
+}
+
+function normalizeActionName(value) {
+  return String(value || "").trim().replace(/[-\s]+/g, "_").toLocaleLowerCase();
+}
+
+function hasSelector(selector) {
+  return !!(selector && Object.values(selector).some(value => value !== undefined && value !== null && value !== ""));
+}
+
+function extraArgumentsForUiAction(action) {
+  switch (normalizeActionName(action)) {
+    case "set_text":
+      return ["text"];
+    case "drag":
+      return ["targetSelector_or_targetPoint_or_delta"];
+    case "scroll":
+      return ["deltaX_or_deltaY"];
+    default:
+      return [];
+  }
+}
+
+function extraArgumentsForSceneAction(action) {
+  switch (normalizeActionName(action)) {
+    case "drag":
+      return ["targetSelector_or_targetPoint"];
+    case "scroll":
+      return ["scrollX_or_scrollY"];
+    default:
+      return [];
+  }
+}
+
+function placeholderUiArgs(action) {
+  switch (normalizeActionName(action)) {
+    case "set_text":
+      return { text: "" };
+    case "drag":
+      return { targetSelector: undefined, targetPoint: undefined };
+    case "scroll":
+      return { deltaY: 0 };
+    default:
+      return {};
+  }
+}
+
+function placeholderSceneArgs(action) {
+  switch (normalizeActionName(action)) {
+    case "drag":
+      return { targetSelector: undefined, targetPoint: undefined };
+    case "scroll":
+      return { scrollY: 0 };
+    default:
+      return {};
+  }
 }
 
 function summarizeAction(action) {
@@ -3455,6 +3763,8 @@ async function executeBatchStep(step, options) {
       return safeCallBridge("status", {});
     case "witch_game_snapshot":
       return collectGameSnapshot(args);
+    case "witch_control_map":
+      return collectControlMap(args);
     case "witch_state_summary":
       return collectStateSummary(args);
     case "witch_plan_next":
