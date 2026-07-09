@@ -13,6 +13,7 @@
     "selftest": "node selftest.mjs",
     "calltest": "node calltest.mjs",
     "orchestration-test": "node orchestration-test.mjs",
+    "state-advance-policy-test": "node state-advance-policy-test.mjs",
     "no-mouse-test": "powershell -ExecutionPolicy Bypass -File verify-no-mouse-policy.ps1",
     "e2e-fake": "node verify-end-to-end-fake.mjs"
   },
