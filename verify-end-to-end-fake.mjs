@@ -171,9 +171,11 @@ function commandResult(command, params) {
           targets: [
             { index: 0, targetIndex: 0, targetName: "Slime", instanceId: 601, objectName: "Slime" }
           ],
-          supportedActions: ["play_card"]
+          supportedActions: ["play_card", "play_card_target"]
         }
       };
+    case "battle.play_card":
+      return { ok: true, data: { Success: true, CardIndex: params.cardIndex, TargetIndex: params.targetIndex } };
     default:
       return { ok: false, error: `unexpected ${command}` };
   }

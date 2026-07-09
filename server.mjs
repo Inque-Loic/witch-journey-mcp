@@ -173,7 +173,7 @@ const tools = [
   },
   {
     name: "witch_no_mouse_evidence_plan",
-    description: "Turn the strict no-mouse completion audit into concrete next proof steps, including current witch_execute_operation probes when matching no-mouse operations are available.",
+    description: "Turn the strict no-mouse completion audit into concrete next proof steps, including current witch_no_mouse_probe_operation calls when matching no-mouse operations are available.",
     inputSchema: {
       type: "object",
       properties: {
@@ -185,6 +185,35 @@ const tools = [
         requireNativeBattleSnapshot: { type: "boolean", default: true },
         includeEvidenceLog: { type: "boolean", default: true },
         includeControlMap: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_no_mouse_probe_operation",
+    description: "Probe one current no-mouse operation from witch_control_map, optionally execute it, and record operation-level proof evidence.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operationId: { type: "string" },
+        family: { type: "string" },
+        action: { type: "string" },
+        label: { type: "string" },
+        index: { type: "integer" },
+        contains: { type: "boolean", default: true },
+        dryRun: { type: "boolean", default: true },
+        arguments: { type: "object", additionalProperties: true },
+        allowIncomplete: { type: "boolean", default: false },
+        recordEvidence: { type: "boolean", default: true },
+        note: { type: "string", default: "" },
+        includeControlMap: { type: "boolean", default: false },
+        includePostSummary: { type: "boolean", default: false },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        includeActions: { type: "boolean", default: true },
+        includeUi: { type: "boolean", default: true },
+        includeScene: { type: "boolean", default: true },
+        includeBattle: { type: "boolean", default: true }
       },
       additionalProperties: false
     }
@@ -1243,6 +1272,9 @@ async function handleRequest(request) {
     if (toolName === "witch_no_mouse_evidence_plan") {
       return toolResult(id, await noMouseEvidencePlan(args));
     }
+    if (toolName === "witch_no_mouse_probe_operation") {
+      return toolResult(id, await probeNoMouseOperation(args));
+    }
     if (toolName === "witch_runtime_diagnostics") {
       return toolResult(id, await runtimeDiagnostics(args));
     }
@@ -2031,7 +2063,9 @@ function emptyNoMouseEvidenceLog() {
     updatedAtUtc: null,
     samples: [],
     families: {},
-    bridge: {}
+    bridge: {},
+    operationTypes: {},
+    operationProbes: {}
   };
 }
 
@@ -2057,7 +2091,8 @@ function mergeNoMouseEvidence(log, sample) {
     updatedAtUtc: sample.capturedAtUtc,
     samples: [...(Array.isArray(log.samples) ? log.samples : []), sample].slice(-100),
     families: { ...(log.families || {}) },
-    bridge: { ...(log.bridge || {}) }
+    bridge: { ...(log.bridge || {}) },
+    operationProbes: { ...(log.operationProbes || {}) }
   };
   for (const familyName of ["ui", "legal_action", "scene", "battle"]) {
     const family = sample.families?.[familyName];
@@ -2108,6 +2143,29 @@ function mergeOperationTypeEvidence(existing, sample) {
   return merged;
 }
 
+function mergeOperationProbeEvidence(existing, probe) {
+  const merged = { ...(existing || {}) };
+  if (!probe?.family || !probe?.action) return merged;
+  const familyName = probe.family;
+  const action = probe.action;
+  merged[familyName] = { ...(merged[familyName] || {}) };
+  const previous = merged[familyName][action] || {};
+  const success = probe.ok === true && probe.noMouse === true;
+  const executedSuccess = success && probe.executed === true;
+  const dryRunSuccess = success && probe.dryRun === true;
+  merged[familyName][action] = {
+    attempts: Number(previous.attempts || 0) + 1,
+    lastAtUtc: probe.capturedAtUtc,
+    successfulAtUtc: success ? probe.capturedAtUtc : (previous.successfulAtUtc || null),
+    dryRunSuccess: previous.dryRunSuccess === true || dryRunSuccess,
+    executedSuccess: previous.executedSuccess === true || executedSuccess,
+    bridge: probe.bridge,
+    operation: probe.operation,
+    lastProbe: probe
+  };
+  return merged;
+}
+
 function summarizeNoMouseEvidenceLog(log) {
   const families = log?.families || {};
   const bridge = log?.bridge || {};
@@ -2125,7 +2183,8 @@ function summarizeNoMouseEvidenceLog(log) {
       nativeBattleSnapshotActive: evidenceFamilySummary(bridge.nativeBattleSnapshotActive),
       updatedDataBridgeReady: evidenceFamilySummary(bridge.updatedDataBridgeReady)
     },
-    operationTypes: summarizeOperationTypeEvidence(log?.operationTypes || {})
+    operationTypes: summarizeOperationTypeEvidence(log?.operationTypes || {}),
+    operationProbes: summarizeOperationProbeEvidence(log?.operationProbes || {})
   };
 }
 
@@ -2160,6 +2219,26 @@ function summarizeOperationTypeEvidence(operationTypes) {
       summary[familyName][action] = item?.observed
         ? { observed: true, provedAtUtc: item.provedAtUtc, bridge: item.bridge || null }
         : { observed: false };
+    }
+  }
+  return summary;
+}
+
+function summarizeOperationProbeEvidence(operationProbes) {
+  const summary = {};
+  for (const familyName of Object.keys(operationProbes || {})) {
+    summary[familyName] = {};
+    for (const action of Object.keys(operationProbes[familyName] || {})) {
+      const item = operationProbes[familyName][action];
+      summary[familyName][action] = {
+        attempts: Number(item?.attempts || 0),
+        dryRunSuccess: item?.dryRunSuccess === true,
+        executedSuccess: item?.executedSuccess === true,
+        successfulAtUtc: item?.successfulAtUtc || null,
+        lastAtUtc: item?.lastAtUtc || null,
+        bridge: item?.bridge || null,
+        operation: item?.operation || null
+      };
     }
   }
   return summary;
@@ -2379,6 +2458,16 @@ function operationTypeCompletionEvidence(currentTypes, log, options = {}) {
       observed[family].add(action);
     }
   }
+  const probes = log?.operationProbes || {};
+  for (const family of Object.keys(probes)) {
+    if (!observed[family]) observed[family] = new Set();
+    for (const action of Object.keys(probes[family] || {})) {
+      const item = probes[family][action];
+      if (item?.executedSuccess !== true) continue;
+      if (options.allowFake !== true && item.bridge?.fakeBridge === true) continue;
+      observed[family].add(action);
+    }
+  }
   const observedLists = {};
   for (const family of Object.keys(observed)) {
     observedLists[family] = Array.from(observed[family]).sort();
@@ -2492,11 +2581,11 @@ function operationProofStep(missing, operations) {
     action: missing.action,
     status: ready ? "ready_in_current_state" : "operation_available_needs_arguments",
     operation: summarizeOperationForProof(selected),
-    dryRunCall: { tool: "witch_execute_operation", arguments: executeArguments },
-    executeCall: { tool: "witch_execute_operation", arguments: { ...executeArguments, dryRun: false } },
+    dryRunCall: { tool: "witch_no_mouse_probe_operation", arguments: executeArguments },
+    executeCall: { tool: "witch_no_mouse_probe_operation", arguments: { ...executeArguments, dryRun: false } },
     nextAction: ready
-      ? "Run the dry-run call, then execute with dryRun:false only when the selected operation is safe for the current game state; afterwards call witch_no_mouse_record_evidence."
-      : "Supply the required arguments, run witch_execute_operation, then call witch_no_mouse_record_evidence."
+      ? "Run the dry-run probe, then execute with dryRun:false only when the selected operation is safe for the current game state; afterwards call witch_no_mouse_record_evidence."
+      : "Supply the required arguments, run witch_no_mouse_probe_operation, then call witch_no_mouse_record_evidence."
   };
   if (selected.requiresArguments?.length) {
     step.requiredArguments = selected.requiresArguments;
@@ -4259,6 +4348,70 @@ async function executeOperation(args) {
   return response;
 }
 
+async function probeNoMouseOperation(args) {
+  const diagnostics = await runtimeDiagnostics({ includeLogTail: false });
+  const result = await executeOperation({
+    ...args,
+    dryRun: args?.dryRun !== false,
+    includeControlMap: args?.includeControlMap === true
+  });
+  const selected = result?.selected || null;
+  const fakeBridge = diagnostics.bridgeStatus?.data?.bridge === "fake";
+  const probe = {
+    capturedAtUtc: new Date().toISOString(),
+    note: typeof args?.note === "string" ? args.note.slice(0, 240) : "",
+    dryRun: result?.dryRun !== false,
+    executed: result?.dryRun === false,
+    ok: result?.ok === true,
+    noMouse: selected?.noMouse === true && selected?.call?.tool !== "witch_input_mouse",
+    family: selected?.family || args?.family || null,
+    action: selected?.action || args?.action || null,
+    operationId: selected?.id || args?.operationId || null,
+    label: selected?.label || args?.label || null,
+    operation: selected ? summarizeOperationForProof(selected) : null,
+    plannedCall: result?.plannedCall || null,
+    result: compactProbeResult(result),
+    bridge: {
+      fakeBridge,
+      statusOk: diagnostics.bridgeStatus?.ok === true,
+      name: diagnostics.bridgeStatus?.data?.bridge || null
+    }
+  };
+
+  let summary = null;
+  if (args?.recordEvidence !== false) {
+    const log = await readNoMouseEvidenceLog();
+    const merged = {
+      ...emptyNoMouseEvidenceLog(),
+      ...log,
+      updatedAtUtc: probe.capturedAtUtc,
+      operationProbes: mergeOperationProbeEvidence(log.operationProbes || {}, probe)
+    };
+    await writeNoMouseEvidenceLog(merged);
+    summary = summarizeNoMouseEvidenceLog(merged);
+  }
+
+  return {
+    ok: probe.ok,
+    recorded: args?.recordEvidence !== false,
+    path: args?.recordEvidence !== false ? NO_MOUSE_EVIDENCE_LOG_PATH : null,
+    probe,
+    summary
+  };
+}
+
+function compactProbeResult(result) {
+  if (!result) return null;
+  return {
+    ok: result.ok,
+    dryRun: result.dryRun,
+    reason: result.reason || null,
+    error: result.error || null,
+    plannedCall: result.plannedCall || null,
+    result: result.result
+  };
+}
+
 function selectOperation(operations, selector) {
   let candidates = operations.slice();
   if (selector.operationId) {
@@ -5050,6 +5203,8 @@ async function executeBatchStep(step, options) {
       return noMouseCompletionAudit(args);
     case "witch_no_mouse_evidence_plan":
       return noMouseEvidencePlan(args);
+    case "witch_no_mouse_probe_operation":
+      return probeNoMouseOperation({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_status":
       return safeCallBridge("status", {});
     case "witch_game_snapshot":

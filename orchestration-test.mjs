@@ -255,9 +255,12 @@ const bridge = http.createServer((request, response) => {
             targets: [
               { index: 0, targetIndex: 0, targetName: "Slime", instanceId: 601, objectName: "Slime" }
             ],
-            supportedActions: ["play_card"]
+            supportedActions: ["play_card", "play_card_target"]
           }
         };
+        break;
+      case "battle.play_card":
+        result = { ok: true, data: { Success: true, CardIndex: payload.params.cardIndex, TargetIndex: payload.params.targetIndex } };
         break;
       case "ui.interact":
         result = { ok: true, data: { Success: true, Selector: payload.params.selector } };
@@ -481,8 +484,9 @@ send(47, "tools/call", { name: "witch_no_mouse_record_evidence", arguments: { re
 send(48, "tools/call", { name: "witch_no_mouse_completion_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 send(49, "tools/call", { name: "witch_execute_operation", arguments: { family: "battle", action: "play_card_target", dryRun: true } });
 send(50, "tools/call", { name: "witch_no_mouse_evidence_plan", arguments: { includeCurrentState: true, includePolicyTests: true } });
+send(51, "tools/call", { name: "witch_no_mouse_probe_operation", arguments: { family: "battle", action: "play_card_target", dryRun: false, note: "orchestration probe" } });
 
-for (let id = 2; id <= 50; id++) {
+for (let id = 2; id <= 51; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -547,8 +551,9 @@ const noMouseEvidence = textResult(47);
 const noMouseCompletionAudit = textResult(48);
 const executeOperation = textResult(49);
 const noMouseEvidencePlan = textResult(50);
+const noMouseProbeOperation = textResult(51);
 
-if (!capabilities.ok || capabilities.tools.length < 53 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 54 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -616,6 +621,9 @@ if (!executeOperation.ok || executeOperation.dryRun !== true || executeOperation
 }
 if (!noMouseEvidencePlan.ok || noMouseEvidencePlan.complete !== true || noMouseEvidencePlan.readyProbeCount !== 0 || noMouseEvidencePlan.completionAuditCall?.tool !== "witch_no_mouse_completion_audit") {
   throw new Error(`bad no-mouse evidence plan ${JSON.stringify(noMouseEvidencePlan, null, 2)}`);
+}
+if (!noMouseProbeOperation.ok || noMouseProbeOperation.probe?.executed !== true || noMouseProbeOperation.probe?.noMouse !== true || noMouseProbeOperation.summary?.operationProbes?.battle?.play_card_target?.executedSuccess !== true) {
+  throw new Error(`bad no-mouse probe operation ${JSON.stringify(noMouseProbeOperation, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);
