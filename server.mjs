@@ -1482,6 +1482,12 @@ async function handleRequest(request) {
     if (toolName === "witch_execute_operation") {
       return toolResult(id, await executeOperation(args));
     }
+    if (toolName === "witch_legal_actions") {
+      return toolResult(id, await collectLegalActions(args));
+    }
+    if (toolName === "witch_perform_action") {
+      return toolResult(id, await performLegalAction(args));
+    }
     if (toolName === "witch_battle_snapshot") {
       return toolResult(id, await collectBattleSnapshot(args));
     }
@@ -2273,6 +2279,8 @@ function localCapabilities() {
       enabledByDefault: DEFAULT_NO_MOUSE,
       forbiddenCommands: ["input.mouse"],
       allowedNoMouseInteractionTools: [
+        "witch_legal_actions",
+        "witch_perform_action",
         "witch_perform_action_match",
         "witch_auto_step",
         "witch_control_map",
@@ -2282,6 +2290,7 @@ function localCapabilities() {
         "witch_no_mouse_state_advance_drive",
         "witch_no_mouse_restart_advance_audit",
         "witch_battle_snapshot",
+        "witch_play_card",
         "witch_ui_interact",
         "witch_ui_click_label",
         "witch_scene_interact",
@@ -4866,7 +4875,7 @@ async function collectGameSnapshot(args) {
     tasks.push(["battle", collectBattleSnapshot(args || {})]);
   }
   if (args?.includeLegalActions !== false) {
-    tasks.push(["legalActions", safeCallBridge("game.legal_actions", {})]);
+    tasks.push(["legalActions", collectLegalActions({})]);
   }
 
   const results = await Promise.all(tasks.map(([, promise]) => promise));
@@ -4918,6 +4927,58 @@ async function playBattleCard(args) {
     ok: fallback?.ok !== false,
     source: "runtime.invoke_static",
     fallbackFrom: "battle.play_card",
+    fallbackReason: "bridge_command_unavailable",
+    direct,
+    runtimeCall: fallbackArgs,
+    runtimeResult: fallback
+  };
+}
+
+async function collectLegalActions(args) {
+  const direct = await safeCallBridge("game.legal_actions", args || {});
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "game.legal_actions")) {
+    return direct;
+  }
+
+  const fallbackArgs = {
+    typeName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
+    methodName: "GetLegalActions",
+    arguments: []
+  };
+  const fallback = await safeCallBridge("runtime.invoke_static", fallbackArgs);
+  const data = fallback?.data?.result || fallback?.result?.result || fallback?.data;
+  return {
+    ...fallback,
+    ok: fallback?.ok !== false,
+    data,
+    source: "runtime.invoke_static",
+    fallbackFrom: "game.legal_actions",
+    fallbackReason: "bridge_command_unavailable",
+    direct,
+    runtimeCall: fallbackArgs,
+    runtimeResult: fallback
+  };
+}
+
+async function performLegalAction(args) {
+  const direct = await safeCallBridge("game.perform_action", args || {});
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "game.perform_action")) {
+    return direct;
+  }
+
+  const fallbackArgs = {
+    typeName: "Witch.UI.Automation.RuntimeGameplayAutomationService",
+    methodName: "PerformActionAsync",
+    arguments: [args || {}]
+  };
+  const fallback = await safeCallBridge("runtime.invoke_static", fallbackArgs);
+  const data = fallback?.data?.result || fallback?.result?.result || fallback?.data;
+  return {
+    ...fallback,
+    ok: fallback?.ok !== false,
+    data,
+    source: "runtime.invoke_static",
+    fallbackFrom: "game.perform_action",
     fallbackReason: "bridge_command_unavailable",
     direct,
     runtimeCall: fallbackArgs,
@@ -6530,7 +6591,7 @@ async function executeRecommendedCall(call, options) {
       if (options?.forceDryRun) {
         return autoStep({ dryRun: true, actionId: args.actionId, includeLegalActions: true });
       }
-      return callBridge("game.perform_action", { actionId: args.actionId });
+      return performLegalAction({ actionId: args.actionId });
     case "witch_perform_action_match":
       if (options?.forceDryRun) {
         return autoStep({ dryRun: true, ...args, includeLegalActions: true });
@@ -6718,7 +6779,7 @@ async function executeBatchStep(step, options) {
     case "witch_find_targets":
       return findTargets(args);
     case "witch_legal_actions":
-      return safeCallBridge("game.legal_actions", {});
+      return collectLegalActions(args);
     case "witch_ui_snapshot":
       return safeCallBridge("ui.snapshot", { scope: args.scope || "", includeHidden: !!args.includeHidden });
     case "witch_scene_snapshot":
@@ -6878,7 +6939,7 @@ async function safeCallBridge(command, params) {
 }
 
 async function performMatchingAction(args) {
-  const legal = await callBridge("game.legal_actions", {});
+  const legal = await collectLegalActions({});
   const actions = legal?.data?.Actions || legal?.data?.actions || [];
   if (!Array.isArray(actions) || actions.length === 0) {
     return { ok: false, error: "No legal actions are available.", legalActions: legal };
@@ -6899,12 +6960,12 @@ async function performMatchingAction(args) {
     return { ok: false, error: "Matched action has no action id.", selected, legalActions: legal };
   }
 
-  const result = await callBridge("game.perform_action", { actionId });
+  const result = await performLegalAction({ actionId });
   return { ok: result?.ok !== false, selected, result };
 }
 
 async function autoStep(args) {
-  const legal = await callBridge("game.legal_actions", {});
+  const legal = await collectLegalActions({});
   const actions = legalActionsFrom(legal);
   if (actions.length === 0) {
     return { ok: false, stopped: true, reason: "no_legal_actions", legalActions: legal };
@@ -6939,7 +7000,7 @@ async function autoStep(args) {
     return response;
   }
 
-  response.result = await callBridge("game.perform_action", { actionId });
+  response.result = await performLegalAction({ actionId });
   response.ok = response.result?.ok !== false;
   return response;
 }
@@ -6950,7 +7011,7 @@ async function autoDrive(args) {
   const steps = [];
 
   for (let i = 0; i < maxSteps; i++) {
-    const legal = await callBridge("game.legal_actions", {});
+    const legal = await collectLegalActions({});
     const actions = legalActionsFrom(legal);
     if (actions.length === 0) {
       steps.push({ index: i, ok: false, stopped: true, reason: "no_legal_actions", legalActions: legal });
@@ -6997,7 +7058,7 @@ async function autoDrive(args) {
       return { ok: true, stopped: true, reason: "dry_run", steps };
     }
 
-    step.result = await callBridge("game.perform_action", { actionId });
+    step.result = await performLegalAction({ actionId });
     step.ok = step.result?.ok !== false;
     if (args?.includeSnapshots) {
       step.after = await collectGameSnapshot({ includeHidden: false, onlyInteractive: true });
