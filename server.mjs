@@ -139,6 +139,22 @@ const tools = [
     }
   },
   {
+    name: "witch_no_mouse_completion_audit",
+    description: "Strictly audit whether the no-mouse takeover goal is fully proven across gameplay, UI, scene, and battle operation families. Returns complete=false when evidence is missing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includePolicyTests: { type: "boolean", default: true },
+        includeCurrentState: { type: "boolean", default: true },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        requireLiveSamples: { type: "boolean", default: true },
+        requireNativeBattleSnapshot: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_runtime_diagnostics",
     description: "Inspect local runtime state without requiring the bridge: process, installed mod files, DLL command markers, Player.log evidence, and bridge status.",
     inputSchema: {
@@ -1156,6 +1172,9 @@ async function handleRequest(request) {
     if (toolName === "witch_no_mouse_coverage") {
       return toolResult(id, await noMouseCoverage(args));
     }
+    if (toolName === "witch_no_mouse_completion_audit") {
+      return toolResult(id, await noMouseCompletionAudit(args));
+    }
     if (toolName === "witch_runtime_diagnostics") {
       return toolResult(id, await runtimeDiagnostics(args));
     }
@@ -1680,6 +1699,7 @@ function localCapabilities() {
         "witch_auto_step",
         "witch_control_map",
         "witch_no_mouse_coverage",
+        "witch_no_mouse_completion_audit",
         "witch_battle_snapshot",
         "witch_ui_interact",
         "witch_ui_click_label",
@@ -1711,6 +1731,7 @@ function localCapabilities() {
       "Use witch_window_focus before fallback input when focus is uncertain.",
       "No-mouse mode is enabled by default; use legal actions, UI automation, scene automation, and runtime tools instead of witch_input_mouse.",
       "Use witch_no_mouse_coverage to prove the running game has the required no-mouse runtime services and current control-map evidence.",
+      "Use witch_no_mouse_completion_audit before claiming full takeover: it requires per-family evidence and reports complete=false when a game state has not been witnessed yet.",
       "Use witch_input_key and witch_input_text only as fallback controls when typed game/UI/scene automation is insufficient. witch_input_mouse is refused unless noMouse is explicitly disabled.",
       "Use witch_runtime_inspect to discover loaded game automation/debug surfaces when typed tools do not cover a needed operation.",
       "Use witch_runtime_objects to inspect Unity GameObjects/components when UI, scene, or legal-action snapshots do not expose enough context.",
@@ -1840,6 +1861,162 @@ async function noMouseCoverage(args) {
       noMouseMode: capabilities.noMouseMode
     }
   };
+}
+
+async function noMouseCompletionAudit(args) {
+  const requireLiveSamples = args?.requireLiveSamples !== false;
+  const requireNativeBattleSnapshot = args?.requireNativeBattleSnapshot !== false;
+  const coverage = await noMouseCoverage({
+    includeCurrentState: args?.includeCurrentState !== false,
+    includePolicyTests: args?.includePolicyTests !== false,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+  const diagnostics = await runtimeDiagnostics({ includeLogTail: false });
+  const nativeBattleSnapshot = await safeCallBridge("battle.snapshot", {
+    includeInactive: false,
+    maxCards: 20,
+    maxTargets: 20
+  });
+  const battleSnapshot = nativeBattleSnapshot?.ok === true
+    ? await collectBattleSnapshot({ maxCards: 20, maxTargets: 20 })
+    : await collectBattleSnapshotFromRuntime({ maxCards: 20, maxTargets: 20 });
+  const requirements = [];
+  const current = coverage.currentState || {};
+  const families = coverage.families || [];
+  const byFamily = current.controlMap?.byFamily || {};
+  const dataRoot = diagnostics.modFiles?.find(item => containsText(item.root, "Witch's Apocalyptic Journey_Data"));
+  const fakeBridge = diagnostics.bridgeStatus?.data?.bridge === "fake";
+  const anyRootWithMarkers = diagnostics.modFiles?.some(root => root.dll?.exists && BRIDGE_MARKERS.every(marker => root.dllMarkers?.[marker] === true)) === true;
+  const dataRootWithMarkers = !!dataRoot?.dll?.exists && BRIDGE_MARKERS.every(marker => dataRoot.dllMarkers?.[marker] === true);
+
+  addCompletionRequirement(requirements, {
+    name: "default_os_mouse_disabled",
+    status: coverage.noMouseDefault === true ? "proved" : "missing",
+    evidence: coverage.checks?.find(check => check.name === "default_no_mouse_enabled")
+  });
+  addCompletionRequirement(requirements, {
+    name: "mouse_entry_points_refused",
+    status: coverage.policyTests?.ok === true ? "proved" : "missing",
+    evidence: coverage.policyTests
+  });
+  addCompletionRequirement(requirements, {
+    name: "no_mouse_tool_surface_present",
+    status: coverage.checks?.find(check => check.name === "mcp_tools_present")?.ok === true ? "proved" : "missing",
+    evidence: {
+      toolCount: coverage.capabilities?.toolCount,
+      families: families.map(family => ({ name: family.name, requiredTools: family.requiredTools }))
+    }
+  });
+  addCompletionRequirement(requirements, {
+    name: "runtime_automation_services_present",
+    status: coverage.checks?.find(check => check.name === "runtime_services_present")?.ok === true ? "proved" : "missing",
+    evidence: coverage.runtimeServices
+  });
+  addCompletionRequirement(requirements, {
+    name: "updated_bridge_artifact_available",
+    status: anyRootWithMarkers ? "proved" : "missing",
+    evidence: diagnostics.modFiles?.map(root => ({
+      root: root.root,
+      dllExists: root.dll?.exists === true,
+      battleSnapshotMarker: root.dllMarkers?.["battle.snapshot"] === true
+    }))
+  });
+  addCompletionRequirement(requirements, {
+    name: "updated_data_bridge_loaded_or_ready",
+    status: fakeBridge || dataRootWithMarkers ? "proved" : "missing",
+    evidence: {
+      fakeBridge,
+      dataRoot: dataRoot ? {
+        root: dataRoot.root,
+        dllSizeBytes: dataRoot.dll?.sizeBytes,
+        battleSnapshotMarker: dataRoot.dllMarkers?.["battle.snapshot"] === true
+      } : null,
+      process: diagnostics.process,
+      freshness: diagnostics.bridgeArtifactFreshness
+    },
+    nextAction: fakeBridge || dataRootWithMarkers ? null : "重启游戏后把新版 Entry.dll 同步到 Witch's Apocalyptic Journey_Data\\Mods\\CodexMcpBridge\\Scripts\\Entry.dll，或确认游戏实际加载 Mods\\CodexMcpBridge 中的新 DLL。"
+  });
+  addCompletionRequirement(requirements, {
+    name: "native_battle_snapshot_active",
+    status: !requireNativeBattleSnapshot || nativeBattleSnapshot?.ok === true ? "proved" : "missing",
+    evidence: nativeBattleSnapshot,
+    nextAction: nativeBattleSnapshot?.ok === true ? null : "运行中的桥还不认识 battle.snapshot；需要重启游戏加载新版桥 DLL 后再验证。"
+  });
+  addCompletionRequirement(requirements, {
+    name: "current_state_has_no_unmapped_operations",
+    status: current.controlMap?.unmappedCount === 0 ? "proved" : "missing",
+    evidence: current.controlMap
+  });
+  addCompletionRequirement(requirements, {
+    name: "ui_live_sample_observed",
+    status: !requireLiveSamples || Number(byFamily.ui || 0) > 0 || Number(current.clickableUiCount || 0) > 0 ? "proved" : "missing",
+    evidence: { mappedOperations: byFamily.ui || 0, clickableUiCount: current.clickableUiCount || 0 }
+  });
+  addCompletionRequirement(requirements, {
+    name: "legal_action_live_sample_observed",
+    status: !requireLiveSamples || Number(byFamily.legal_action || 0) > 0 || Number(current.legalActionCount || 0) > 0 ? "proved" : "missing",
+    evidence: { mappedOperations: byFamily.legal_action || 0, legalActionCount: current.legalActionCount || 0 },
+    nextAction: Number(byFamily.legal_action || 0) > 0 || Number(current.legalActionCount || 0) > 0 ? null : "进入会暴露游戏合法动作的流程状态，再采集 witch_no_mouse_completion_audit。"
+  });
+  addCompletionRequirement(requirements, {
+    name: "scene_live_sample_observed",
+    status: !requireLiveSamples || Number(byFamily.scene || 0) > 0 || Number(current.interactiveSceneObjectCount || 0) > 0 ? "proved" : "missing",
+    evidence: { mappedOperations: byFamily.scene || 0, interactiveSceneObjectCount: current.interactiveSceneObjectCount || 0 },
+    nextAction: Number(byFamily.scene || 0) > 0 || Number(current.interactiveSceneObjectCount || 0) > 0 ? null : "进入有可交互场景对象的游戏状态，再采集场景操作样本。"
+  });
+  addCompletionRequirement(requirements, {
+    name: "battle_live_sample_observed",
+    status: !requireLiveSamples || Number(byFamily.battle || 0) > 0 || battleSnapshot?.inBattle === true ? "proved" : "missing",
+    evidence: {
+      mappedOperations: byFamily.battle || 0,
+      inBattle: battleSnapshot?.inBattle === true,
+      cardCount: battleSnapshot?.cardCount || 0,
+      targetCount: battleSnapshot?.targetCount || 0,
+      supportedActions: battleSnapshot?.supportedActions || []
+    },
+    nextAction: battleSnapshot?.inBattle === true ? null : "进入一场战斗，再验证 witch_battle_snapshot 能看到手牌/目标，并用 dry-run 或安全策略验证 witch_play_card 参数路径。"
+  });
+
+  const missing = requirements.filter(item => item.status !== "proved");
+  return {
+    ok: missing.length === 0,
+    complete: missing.length === 0,
+    capturedAtUtc: new Date().toISOString(),
+    strict: true,
+    requireLiveSamples,
+    requireNativeBattleSnapshot,
+    requirements,
+    missing: missing.map(item => ({
+      name: item.name,
+      status: item.status,
+      nextAction: item.nextAction || null
+    })),
+    summary: missing.length === 0
+      ? "No-mouse takeover is fully proven by the current evidence."
+      : "No-mouse takeover is implemented for the exposed families, but full completion is not proven by the current live evidence.",
+    coverage,
+    battleSnapshot,
+    diagnostics: {
+      bridgeStatus: diagnostics.bridgeStatus,
+      bridgeArtifactFreshness: diagnostics.bridgeArtifactFreshness,
+      modFiles: diagnostics.modFiles?.map(root => ({
+        root: root.root,
+        dll: root.dll,
+        battleSnapshotMarker: root.dllMarkers?.["battle.snapshot"] === true
+      }))
+    }
+  };
+}
+
+function addCompletionRequirement(requirements, item) {
+  requirements.push({
+    name: item.name,
+    status: item.status,
+    ok: item.status === "proved",
+    evidence: item.evidence,
+    nextAction: item.nextAction || null
+  });
 }
 
 async function inspectNoMouseRuntimeServices() {
@@ -2192,6 +2369,7 @@ async function takeoverAudit(args) {
     "witch_takeover_audit",
     "witch_no_mouse_audit",
     "witch_no_mouse_coverage",
+    "witch_no_mouse_completion_audit",
     "witch_takeover_step",
     "witch_takeover_drive",
     "witch_game_snapshot",
@@ -2349,6 +2527,61 @@ async function verifyLocalOsFallbackControl(args) {
   };
 }
 
+async function syncUpdatedBridgeDllToDataRoot() {
+  const destination = path.join(WORKSPACE_ROOT, "Witch's Apocalyptic Journey_Data", "Mods", "CodexMcpBridge", "Scripts", "Entry.dll");
+  const candidates = [
+    path.join(SERVER_DIR, "bridge-mod", "Scripts", "Entry.dll"),
+    path.join(WORKSPACE_ROOT, "Mods", "CodexMcpBridge", "Scripts", "Entry.dll"),
+    path.join(SERVER_DIR, "build", "CodexMcpBridge.Codex.dll")
+  ];
+  const checked = [];
+  for (const source of candidates) {
+    const info = await statInfo(source);
+    if (!info.exists) {
+      checked.push({ source, exists: false });
+      continue;
+    }
+    const markers = await scanFileMarkers(source, BRIDGE_MARKERS);
+    const markerReady = BRIDGE_MARKERS.every(marker => markers?.[marker] === true);
+    checked.push({
+      source,
+      exists: true,
+      sizeBytes: info.sizeBytes,
+      modifiedAtUtc: info.modifiedAtUtc,
+      markerReady
+    });
+    if (!markerReady) continue;
+    try {
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.copyFile(source, destination);
+      const copied = await statInfo(destination);
+      const copiedMarkers = await scanFileMarkers(destination, BRIDGE_MARKERS);
+      return {
+        ok: BRIDGE_MARKERS.every(marker => copiedMarkers?.[marker] === true),
+        source,
+        destination,
+        copied,
+        markers: copiedMarkers,
+        checked
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        source,
+        destination,
+        error: error.message,
+        checked
+      };
+    }
+  }
+  return {
+    ok: false,
+    reason: "no_updated_bridge_dll_candidate",
+    destination,
+    checked
+  };
+}
+
 async function prepareTakeover(args) {
   const launchIfNotRunning = args?.launchIfNotRunning !== false;
   const restartIfRunning = args?.restartIfRunning === true;
@@ -2401,6 +2634,20 @@ async function prepareTakeover(args) {
       };
     }
     startedOrRestarted = true;
+  }
+
+  if ((!diagnostics.process?.running || startedOrRestarted) && launchIfNotRunning) {
+    const sync = await syncUpdatedBridgeDllToDataRoot();
+    steps.push({ name: "sync_bridge_dll_to_data_root", result: sync });
+    if (!sync.ok) {
+      return {
+        ok: false,
+        reason: "bridge_dll_sync_failed",
+        recommendation: "Copy the updated bridge-mod\\Scripts\\Entry.dll into Witch's Apocalyptic Journey_Data\\Mods\\CodexMcpBridge\\Scripts\\Entry.dll after closing the game, then start the game again.",
+        diagnostics,
+        steps
+      };
+    }
   }
 
   if ((!diagnostics.process?.running || (diagnostics.process?.running && restartIfRunning)) && launchIfNotRunning) {
@@ -4120,6 +4367,8 @@ async function executeBatchStep(step, options) {
       return noMouseAudit(args);
     case "witch_no_mouse_coverage":
       return noMouseCoverage(args);
+    case "witch_no_mouse_completion_audit":
+      return noMouseCompletionAudit(args);
     case "witch_status":
       return safeCallBridge("status", {});
     case "witch_game_snapshot":

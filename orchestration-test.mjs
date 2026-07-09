@@ -473,8 +473,9 @@ send(43, "tools/call", { name: "witch_auto_step", arguments: { dryRun: false, la
 send(44, "tools/call", { name: "witch_no_mouse_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 send(45, "tools/call", { name: "witch_control_map", arguments: { includeHidden: false, onlyInteractive: true } });
 send(46, "tools/call", { name: "witch_no_mouse_coverage", arguments: { includeCurrentState: true, includePolicyTests: true } });
+send(47, "tools/call", { name: "witch_no_mouse_completion_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 
-for (let id = 2; id <= 46; id++) {
+for (let id = 2; id <= 47; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -535,8 +536,9 @@ const policyDeniedAutoStep = textResult(43);
 const noMouseAudit = textResult(44);
 const controlMap = textResult(45);
 const noMouseCoverage = textResult(46);
+const noMouseCompletionAudit = textResult(47);
 
-if (!capabilities.ok || capabilities.tools.length < 49 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 50 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -592,6 +594,9 @@ if (!controlMap.ok || controlMap.noMouseDefault !== true || controlMap.operation
 }
 if (!noMouseCoverage.ok || noMouseCoverage.checks?.some(item => !item.ok) || noMouseCoverage.families?.some(item => !item.runtime?.ok)) {
   throw new Error(`bad no-mouse coverage ${JSON.stringify(noMouseCoverage, null, 2)}`);
+}
+if (!noMouseCompletionAudit.complete || noMouseCompletionAudit.requirements?.some(item => item.status !== "proved")) {
+  throw new Error(`bad no-mouse completion audit ${JSON.stringify(noMouseCompletionAudit, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);
