@@ -158,6 +158,12 @@ powershell -ExecutionPolicy Bypass -File .\restart-and-verify.ps1 -ConfirmRestar
 powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1
 ```
 
+想先查看所有模式、选项和退出码，可以运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -Help
+```
+
 不带确认参数时，它只会预览严格审计缺口和当前无鼠标状态推进候选，不会关闭或重启游戏。确认已经保存好进度并希望加载新版桥接 DLL 后，可以运行：
 
 ```powershell

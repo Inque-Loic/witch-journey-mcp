@@ -1,4 +1,5 @@
 param(
+  [switch]$Help,
   [string]$ConfirmRestart,
   [int]$TimeoutSec = 180,
   [int]$IntervalSec = 2,
@@ -16,6 +17,41 @@ param(
 $ErrorActionPreference = "Stop"
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Show-Usage {
+  Write-Host "prove-no-mouse-takeover.ps1"
+  Write-Host ""
+  Write-Host "Safe preview, no game process changes:"
+  Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1"
+  Write-Host ""
+  Write-Host "Wait for you to close the game manually, then sync the updated bridge DLL:"
+  Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock"
+  Write-Host ""
+  Write-Host "Wait for manual close, sync, then wait for you to start the game manually and run proof preview:"
+  Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync"
+  Write-Host ""
+  Write-Host "Confirmed scripted restart path:"
+  Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -ConfirmRestart RESTART_WITCH_GAME"
+  Write-Host ""
+  Write-Host "Useful options:"
+  Write-Host "  -OutputPath .\no-mouse-proof.json     Write a machine-readable proof/sync bundle."
+  Write-Host "  -SyncTimeoutSec 600                   Manual DLL unlock wait timeout."
+  Write-Host "  -TimeoutSec 180                       Bridge/proof wait timeout."
+  Write-Host "  -ExecuteStateAdvance                  Allow real no-mouse state-advance operations after review."
+  Write-Host "  -ExecuteProbes                        Allow real no-mouse operation probes after review."
+  Write-Host ""
+  Write-Host "Exit codes:"
+  Write-Host "  0  Complete or sync-only success."
+  Write-Host "  2  Preview completed; strict proof is not complete yet."
+  Write-Host "  3  Proof ran but strict audit is still incomplete."
+  Write-Host "  4  Manual DLL unlock sync did not complete."
+  Write-Host "  5  Sync succeeded, but bridge did not become ready after manual restart."
+}
+
+if ($Help) {
+  Show-Usage
+  exit 0
+}
 
 function Invoke-WitchMcpJson {
   param(
