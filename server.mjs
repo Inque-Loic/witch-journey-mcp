@@ -3268,7 +3268,7 @@ function requirementProofStep(item) {
       }
   };
   if (restartNeeded) {
-    step.scriptCommand = "powershell -ExecutionPolicy Bypass -File .\\prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync -OutputPath .\\no-mouse-proof.json";
+    step.scriptCommand = manualBridgeProofScriptCommand();
     step.safeManualCall = {
       tool: "witch_sync_bridge_artifacts",
       arguments: {
@@ -3294,11 +3294,15 @@ function requirementProofStep(item) {
 }
 
 function manualBridgeUnlockNextAction() {
-  return "当前 Data 目录桥 DLL 尚未是新版，且运行中的游戏可能正在占用 Entry.dll。安全路径：运行 `powershell -ExecutionPolicy Bypass -File .\\prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync -OutputPath .\\no-mouse-proof.json`，然后手动关闭游戏释放 DLL、等待同步、再手动启动游戏继续严格证明。";
+  return "当前 Data 目录桥 DLL 尚未是新版，且运行中的游戏可能正在占用 Entry.dll。安全路径：运行 `" + manualBridgeProofScriptCommand() + "`，然后手动关闭游戏释放 DLL、等待同步、再手动启动游戏继续严格证明。";
 }
 
 function manualBridgeReloadNextAction() {
   return "运行中的桥还不认识 battle.snapshot，说明当前进程还未加载新版桥 DLL。安全路径：先用 `prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync` 完成手动关闭、同步、手动重启和证明预览；或在确认可关闭游戏后使用确认式重启路径。";
+}
+
+function manualBridgeProofScriptCommand() {
+  return "powershell -ExecutionPolicy Bypass -File .\\prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync -OutputPath .\\no-mouse-proof.json";
 }
 
 function stateEntryHintForMissingType(missing) {
@@ -3855,6 +3859,7 @@ async function syncBridgeArtifacts(args) {
   const processRunning = after?.process?.running === true || before?.process?.running === true;
   const loadedBridgeMayNeedRestart = sync?.ok === true && processRunning && !dryRun;
   const syncFailed = sync?.ok !== true;
+  const retryableSyncFailure = isRetryableBridgeSyncFailure(sync);
   const timedOut = waitForUnlock && syncFailed && Date.now() - startedAt >= timeoutMs;
   return {
     ok: sync?.ok === true,
@@ -3876,11 +3881,12 @@ async function syncBridgeArtifacts(args) {
         : (dryRun ? "Dry-run only; no files were changed." : "The updated bridge file is present in the Data Mod directory.")),
     nextStep: syncFailed
       ? (timedOut
-        ? "Close the game to release the locked DLL, then run witch_sync_bridge_artifacts again or use waitForUnlock with a longer timeout."
-        : (processRunning ? "Restart the game when you are ready, then run witch_sync_bridge_artifacts or witch_no_mouse_restart_collect_audit." : "Inspect sync.error and copy permissions, then run witch_sync_bridge_artifacts again."))
+        ? manualBridgeProofScriptCommand()
+        : (retryableSyncFailure ? manualBridgeProofScriptCommand() : (processRunning ? "Restart the game when you are ready, then run witch_sync_bridge_artifacts or witch_no_mouse_restart_collect_audit." : "Inspect sync.error and copy permissions, then run witch_sync_bridge_artifacts again.")))
       : loadedBridgeMayNeedRestart
       ? "Restart the game when you are ready, then run witch_no_mouse_restart_collect_audit."
-      : "Run witch_no_mouse_completion_audit to verify the bridge artifact readiness requirement."
+      : "Run witch_no_mouse_completion_audit to verify the bridge artifact readiness requirement.",
+    scriptCommand: syncFailed && retryableSyncFailure ? manualBridgeProofScriptCommand() : undefined
   };
 }
 
