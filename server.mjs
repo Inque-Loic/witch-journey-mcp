@@ -1488,6 +1488,18 @@ async function handleRequest(request) {
     if (toolName === "witch_perform_action") {
       return toolResult(id, await performLegalAction(args));
     }
+    if (toolName === "witch_ui_snapshot") {
+      return toolResult(id, await collectUiSnapshot(args));
+    }
+    if (toolName === "witch_ui_interact") {
+      return toolResult(id, await interactUi(args));
+    }
+    if (toolName === "witch_ui_click_label") {
+      return toolResult(id, await interactUi(uiClickLabelArgs(args)));
+    }
+    if (toolName === "witch_ui_wait") {
+      return toolResult(id, await waitForUi(args));
+    }
     if (toolName === "witch_scene_snapshot") {
       return toolResult(id, await collectSceneSnapshot(args));
     }
@@ -1537,9 +1549,7 @@ async function handleRequest(request) {
       return toolResult(id, await captureAndWait(args));
     }
     const mapped = toolToBridge(toolName, args);
-    const result = toolName === "witch_ui_wait"
-      ? await waitForUi(args)
-      : await callBridgeWithLocalFallback(mapped.command, mapped.params);
+    const result = await callBridgeWithLocalFallback(mapped.command, mapped.params);
     return toolResult(id, result);
   }
   return {
@@ -1571,7 +1581,7 @@ async function waitForUi(args) {
   let last = null;
 
   while (Date.now() - startedAt <= timeoutMs) {
-    last = await callBridge("ui.wait", args || {});
+    last = await waitForUiOnce(args || {});
     if (last?.ok && last?.data?.Satisfied === true) {
       return { ...last, waitedMs: Date.now() - startedAt, timedOut: false };
     }
@@ -4875,7 +4885,7 @@ async function collectGameSnapshot(args) {
 
   const tasks = [];
   if (args?.includeUi !== false) {
-    tasks.push(["ui", safeCallBridge("ui.snapshot", { includeHidden: !!args?.includeHidden })]);
+    tasks.push(["ui", collectUiSnapshot({ includeHidden: !!args?.includeHidden })]);
   }
   if (args?.includeScene !== false) {
     tasks.push(["scene", collectSceneSnapshot({ includeInactive: false, onlyInteractive: args?.onlyInteractive !== false })]);
@@ -4916,6 +4926,55 @@ async function collectBattleSnapshot(args) {
   return {
     ...fallback,
     bridgeSnapshot: direct?.ok === false ? direct : undefined
+  };
+}
+
+async function collectUiSnapshot(args) {
+  const params = {
+    scope: args?.scope || "",
+    includeHidden: !!args?.includeHidden
+  };
+  const direct = await safeCallBridge("ui.snapshot", params);
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "ui.snapshot")) {
+    return direct;
+  }
+
+  return invokeAutomationStaticFallback("ui.snapshot", "Witch.UI.Automation.RuntimeUiAutomationService", "CaptureSnapshot", [params], direct);
+}
+
+async function interactUi(args) {
+  const direct = await safeCallBridge("ui.interact", args || {});
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "ui.interact")) {
+    return direct;
+  }
+
+  return invokeAutomationStaticFallback("ui.interact", "Witch.UI.Automation.RuntimeUiAutomationService", "InteractAsync", [args || {}], direct);
+}
+
+async function waitForUiOnce(args) {
+  const direct = await safeCallBridge("ui.wait", args || {});
+  if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "ui.wait")) {
+    return direct;
+  }
+
+  const snapshot = await collectUiSnapshot({ includeHidden: true });
+  if (snapshot?.ok === false) {
+    return {
+      ok: false,
+      reason: "ui_wait_snapshot_unavailable",
+      direct,
+      snapshot
+    };
+  }
+  return invokeAutomationStaticFallback("ui.wait", "Witch.UI.Automation.RuntimeUiAutomationService", "EvaluateWaitCondition", [snapshot.data || snapshot, args || {}], direct);
+}
+
+function uiClickLabelArgs(args) {
+  return {
+    action: "click",
+    selector: { label: args?.label, windowName: args?.windowName },
+    requireClickable: args?.requireClickable !== false,
+    includePostSnapshot: args?.includePostSnapshot !== false
   };
 }
 
@@ -6615,17 +6674,12 @@ async function executeRecommendedCall(call, options) {
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
       }
-      return callBridge("ui.interact", {
-        action: "click",
-        selector: { label: args.label, windowName: args.windowName },
-        requireClickable: args.requireClickable !== false,
-        includePostSnapshot: args.includePostSnapshot !== false
-      });
+      return interactUi(uiClickLabelArgs(args));
     case "witch_ui_interact":
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
       }
-      return callBridge("ui.interact", args);
+      return interactUi(args);
     case "witch_scene_interact":
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
@@ -6793,7 +6847,7 @@ async function executeBatchStep(step, options) {
     case "witch_legal_actions":
       return collectLegalActions(args);
     case "witch_ui_snapshot":
-      return safeCallBridge("ui.snapshot", { scope: args.scope || "", includeHidden: !!args.includeHidden });
+      return collectUiSnapshot(args);
     case "witch_scene_snapshot":
       return collectSceneSnapshot(args);
     case "witch_scene_raycast":

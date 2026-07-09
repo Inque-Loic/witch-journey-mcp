@@ -97,7 +97,7 @@
 MCP 默认不使用 OS 鼠标。也就是说：
 
 - `witch_legal_actions`、`witch_perform_action_match`、`witch_auto_step`、`witch_auto_drive` 走游戏自己的合法动作层；如果旧桥接还不认识 `game.legal_actions` 或 `game.perform_action`，MCP 会尝试通过 `RuntimeGameplayAutomationService` 走 runtime fallback。
-- `witch_ui_interact` 和 `witch_ui_click_label` 走游戏内 UI 自动化，即使 action 名叫 `click`，也不是移动 Windows 鼠标。
+- `witch_ui_snapshot`、`witch_ui_interact`、`witch_ui_click_label`、`witch_ui_wait` 走游戏内 UI 自动化，即使 action 名叫 `click`，也不是移动 Windows 鼠标；如果旧桥接还不认识 `ui.*` 命令，MCP 会尝试通过 `RuntimeUiAutomationService` 走 runtime fallback。
 - `witch_scene_snapshot`、`witch_scene_interact`、`witch_scene_raycast` 走游戏内场景自动化，也不是移动 Windows 鼠标；如果旧桥接还不认识 `scene.*` 命令，MCP 会尝试通过 `RuntimeSceneAutomationService` 走 runtime fallback。
 - `witch_battle_snapshot` 可以观察战斗手牌和可选目标，`witch_play_card` 可以按卡牌/目标参数出牌，不需要移动鼠标去点卡牌；如果运行中的旧桥接还不认识 `battle.play_card`，MCP 会尝试通过 `RuntimeBattleAutomationService.PlayCardAsync` 走 runtime fallback。
 - `witch_input_mouse` 和 `witch_bridge_command` 里的 `input.mouse` 默认返回 `mouse_forbidden`，不会触发 `SetCursorPos` 或 `mouse_event`。
