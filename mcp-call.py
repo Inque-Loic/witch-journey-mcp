@@ -7,6 +7,13 @@ import sys
 import tomllib
 
 
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def frame(payload: dict) -> bytes:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     return b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
@@ -71,6 +78,7 @@ def read_stdin_text():
 
 
 def main():
+    configure_stdio()
     parser = argparse.ArgumentParser(description="Call one configured witchJourney MCP tool.")
     parser.add_argument("tool", help="Tool name, e.g. witch_status")
     parser.add_argument("arguments", nargs="?", default="{}", help="JSON object tool arguments, @path for a JSON file, or - for stdin")
