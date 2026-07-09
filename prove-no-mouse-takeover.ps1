@@ -196,6 +196,41 @@ function Write-SyncSummary {
   }
 }
 
+function Write-SyncBundle {
+  param(
+    [Parameter(Mandatory = $true)]$Sync,
+    [Parameter(Mandatory = $true)][hashtable]$Arguments,
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  $bundle = [ordered]@{
+    schemaVersion = 1
+    generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+    mode = "manual_unlock_sync"
+    command = "prove-no-mouse-takeover.ps1"
+    arguments = $Arguments
+    complete = $false
+    ok = $Sync.ok -eq $true
+    reason = $Sync.reason
+    nextStep = $Sync.nextStep
+    result = $Sync
+  }
+
+  $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+  $parent = Split-Path -Parent $resolved
+  if (-not [string]::IsNullOrWhiteSpace($parent)) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $bundle | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $resolved -Encoding UTF8
+  Write-Host ""
+  Write-Host ("Sync bundle written: " + $resolved)
+  Write-Host "Sync bundles may include local game paths and diagnostics; review before sharing."
+}
+
 $argsForTool = @{
   timeoutMs = $TimeoutSec * 1000
   pollMs = [Math]::Max(100, $IntervalSec * 1000)
@@ -213,7 +248,7 @@ if ($WaitForDllUnlock) {
   Write-Host "Waiting for the bridge DLL to become writable."
   Write-Host "No game process will be closed by this script. Close the game manually when you are ready."
   Write-Host ""
-  $sync = Invoke-WitchMcpJson witch_sync_bridge_artifacts @{
+  $syncArguments = @{
     dryRun = $false
     confirm = "SYNC_BRIDGE_ARTIFACTS"
     waitForUnlock = $true
@@ -221,7 +256,9 @@ if ($WaitForDllUnlock) {
     pollMs = [Math]::Max(100, $IntervalSec * 1000)
     includeDiagnostics = $true
   }
+  $sync = Invoke-WitchMcpJson witch_sync_bridge_artifacts $syncArguments
   Write-SyncSummary $sync
+  Write-SyncBundle $sync $syncArguments $OutputPath
   if ($sync.ok -eq $true) {
     Write-Host ""
     Write-Host "Updated bridge DLL is ready for the next game start. Start the game again, then run this script without -WaitForDllUnlock to continue the strict proof."
