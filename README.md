@@ -174,13 +174,19 @@ powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForD
 
 这个模式不会关闭或重启游戏，只会等待 `Entry.dll` 可写；你手动关闭游戏释放 DLL 后，它会同步新版桥接。同步完成后，再手动启动游戏并重新运行证明脚本继续严格审计。
 
+如果希望同步成功后继续等待你手动重新启动游戏，并在桥接上线后自动跑一次严格证明预览，可以加：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync
+```
+
 如果需要保留机器可读的证明包，可以加 `-OutputPath`：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -OutputPath .\no-mouse-proof.json
 ```
 
-证明包会包含严格审计结果、缺失项、状态推进候选和完整 MCP 返回结果，方便之后复查。`-WaitForDllUnlock` 模式也支持 `-OutputPath`，会写出同步结果包。它是本地文件；仓库已忽略 `no-mouse-proof*.json`、`witch-no-mouse-proof*.json` 和 `proof-bundles/`，避免常见证明包误上传。如果你把 `-OutputPath` 指到其他文件名或仓库外路径，请按自己的隐私需求管理。
+证明包会包含严格审计结果、缺失项、状态推进候选和完整 MCP 返回结果，方便之后复查。`-WaitForDllUnlock` 模式也支持 `-OutputPath`，会写出同步结果包；与 `-WaitForBridgeAfterSync` 一起使用时，会写出“同步、等待桥接、证明预览”的连续流程包。它是本地文件；仓库已忽略 `no-mouse-proof*.json`、`witch-no-mouse-proof*.json` 和 `proof-bundles/`，避免常见证明包误上传。如果你把 `-OutputPath` 指到其他文件名或仓库外路径，请按自己的隐私需求管理。
 
 ## 构建桥接 DLL
 

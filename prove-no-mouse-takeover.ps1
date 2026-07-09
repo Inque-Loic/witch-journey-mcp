@@ -7,6 +7,7 @@ param(
   [int]$SyncTimeoutSec = 600,
   [string]$OutputPath,
   [switch]$WaitForDllUnlock,
+  [switch]$WaitForBridgeAfterSync,
   [switch]$ExecuteStateAdvance,
   [switch]$ExecuteProbes,
   [switch]$IncludeScreenshot
@@ -231,6 +232,52 @@ function Write-SyncBundle {
   Write-Host "Sync bundles may include local game paths and diagnostics; review before sharing."
 }
 
+function Write-ManualUnlockFlowBundle {
+  param(
+    [Parameter(Mandatory = $true)]$Sync,
+    $Watch,
+    $Proof,
+    [Parameter(Mandatory = $true)][hashtable]$SyncArguments,
+    [Parameter(Mandatory = $true)][hashtable]$ProofArguments,
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  $audit = Get-ProofAudit $Proof
+  $plan = Get-ProofPlan $Proof
+  $bundle = [ordered]@{
+    schemaVersion = 1
+    generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+    mode = "manual_unlock_sync_and_watch"
+    command = "prove-no-mouse-takeover.ps1"
+    arguments = @{
+      sync = $SyncArguments
+      proof = $ProofArguments
+    }
+    complete = $Proof -and $Proof.complete -eq $true
+    reason = if ($Proof) { $Proof.reason } elseif ($Watch) { $Watch.reason } else { $Sync.reason }
+    nextStep = if ($Proof) { $Proof.nextStep } elseif ($Watch) { $Watch.nextStep } else { $Sync.nextStep }
+    missing = if ($audit -and $audit.missing) { @($audit.missing) } else { @() }
+    stateAdvanceCandidates = if ($plan -and $plan.stateAdvanceCandidates) { @($plan.stateAdvanceCandidates) } else { @() }
+    sync = $Sync
+    watch = $Watch
+    proof = $Proof
+  }
+
+  $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+  $parent = Split-Path -Parent $resolved
+  if (-not [string]::IsNullOrWhiteSpace($parent)) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $bundle | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $resolved -Encoding UTF8
+  Write-Host ""
+  Write-Host ("Manual unlock flow bundle written: " + $resolved)
+  Write-Host "Flow bundles may include local game paths, current game state, labels, and candidate operation ids; review before sharing."
+}
+
 $argsForTool = @{
   timeoutMs = $TimeoutSec * 1000
   pollMs = [Math]::Max(100, $IntervalSec * 1000)
@@ -258,11 +305,40 @@ if ($WaitForDllUnlock) {
   }
   $sync = Invoke-WitchMcpJson witch_sync_bridge_artifacts $syncArguments
   Write-SyncSummary $sync
-  Write-SyncBundle $sync $syncArguments $OutputPath
+  if (-not $WaitForBridgeAfterSync) {
+    Write-SyncBundle $sync $syncArguments $OutputPath
+  }
   if ($sync.ok -eq $true) {
     Write-Host ""
+    if ($WaitForBridgeAfterSync) {
+      Write-Host "Updated bridge DLL is ready for the next game start. Start the game manually now; this script will wait for the bridge and then run a strict proof preview."
+      $watch = Invoke-WitchMcpJson witch_watch_bridge_load @{
+        timeoutMs = $TimeoutSec * 1000
+        pollMs = [Math]::Max(100, $IntervalSec * 1000)
+        runAuditWhenReady = $true
+        includeScreenshot = [bool]$IncludeScreenshot
+      }
+      if ($watch.ok -eq $true) {
+        Write-Host ""
+        Write-Host "Bridge responded after manual restart; running strict no-mouse proof preview."
+        $proof = Invoke-WitchMcpJson witch_no_mouse_restart_advance_audit $argsForTool
+        Write-ProofSummary $proof
+        Write-ManualUnlockFlowBundle $sync $watch $proof $syncArguments $argsForTool $OutputPath
+        if ($proof.complete -eq $true) {
+          exit 0
+        }
+        exit 3
+      }
+      Write-Host ""
+      Write-Host ("Bridge did not become ready: " + [string]$watch.reason)
+      Write-ManualUnlockFlowBundle $sync $watch $null $syncArguments $argsForTool $OutputPath
+      exit 5
+    }
     Write-Host "Updated bridge DLL is ready for the next game start. Start the game again, then run this script without -WaitForDllUnlock to continue the strict proof."
     exit 0
+  }
+  if ($WaitForBridgeAfterSync) {
+    Write-ManualUnlockFlowBundle $sync $null $null $syncArguments $argsForTool $OutputPath
   }
   exit 4
 }
@@ -274,6 +350,8 @@ if ($ConfirmRestart -ne "RESTART_WITCH_GAME") {
   Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -ConfirmRestart RESTART_WITCH_GAME"
   Write-Host "Or wait for a manual close and sync the DLL without closing the game from Codex:"
   Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock"
+  Write-Host "To also wait for a manual game restart and continue proof preview:"
+  Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync"
   Write-Host ""
   $preview = Invoke-WitchMcpJson witch_no_mouse_restart_advance_audit $argsForTool
   Write-ProofSummary $preview
