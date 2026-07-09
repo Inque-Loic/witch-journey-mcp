@@ -5,8 +5,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 
-const port = 19174;
-const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "witch-no-mouse-guidance-test-"));
+const port = 19180;
+const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "witch-runtime-fallback-completion-test-"));
 
 const bridge = http.createServer((request, response) => {
   let body = "";
@@ -15,12 +15,17 @@ const bridge = http.createServer((request, response) => {
     body += chunk;
   });
   request.on("end", () => {
+    if (request.method === "GET" && request.url === "/health") {
+      respond(response, { ok: true, bridge: "CodexMcpBridge", version: "0.9.0-old" });
+      return;
+    }
     if (request.method !== "POST" || request.url !== "/command") {
       respond(response, { ok: false, error: "unexpected route" }, 404);
       return;
     }
+
     const payload = JSON.parse(body || "{}");
-    respond(response, commandResult(payload.command));
+    respond(response, commandResult(payload.command, payload.params || {}));
   });
 });
 
@@ -43,42 +48,34 @@ try {
   send(child, 1, "initialize", {});
   await waitForMessage(messages, 1);
   send(child, 2, "tools/call", {
-    name: "witch_no_mouse_evidence_plan",
-    arguments: {
-      includeCurrentState: true,
-      includePolicyTests: true
-    }
-  });
-  send(child, 3, "tools/call", {
     name: "witch_no_mouse_completion_audit",
     arguments: {
       includeCurrentState: true,
-      includePolicyTests: true
+      includePolicyTests: true,
+      includeEvidenceLog: false
     }
   });
   await waitForMessage(messages, 2);
-  await waitForMessage(messages, 3);
 
-  const plan = textResult(messages, 2);
-  const audit = textResult(messages, 3);
-  const bridgeStep = (plan.requirementSteps || []).find(item => item.name === "updated_data_bridge_loaded_or_ready");
-  const nativeBattleStep = (plan.requirementSteps || []).find(item => item.name === "native_battle_snapshot_active");
-  const bridgeMissing = (audit.missing || []).find(item => item.name === "updated_data_bridge_loaded_or_ready");
+  const audit = textResult(messages, 2);
+  const missingNames = new Set((audit.missing || []).map(item => item.name));
+  const dataBridgeRequirement = (audit.requirements || []).find(item => item.name === "updated_data_bridge_loaded_or_ready");
+  const nativeBattleRequirement = (audit.requirements || []).find(item => item.name === "native_battle_snapshot_active");
 
-  if (plan.complete !== false || !bridgeStep || !nativeBattleStep) {
-    throw new Error(`expected incomplete plan with bridge requirement steps ${JSON.stringify(plan, null, 2)}`);
+  if (audit.complete !== false) {
+    throw new Error(`fallback audit should still be incomplete without live samples ${JSON.stringify(audit, null, 2)}`);
   }
-  if (!String(bridgeStep.scriptCommand || "").includes("-WaitForDllUnlock -WaitForBridgeAfterSync")) {
-    throw new Error(`bridge step did not include manual proof script command ${JSON.stringify(bridgeStep, null, 2)}`);
+  if (missingNames.has("updated_data_bridge_loaded_or_ready") || missingNames.has("native_battle_snapshot_active")) {
+    throw new Error(`runtime fallback should satisfy bridge readiness requirements ${JSON.stringify(audit.missing, null, 2)}`);
   }
-  if (bridgeStep.safeManualCall?.tool !== "witch_sync_bridge_artifacts" || bridgeStep.safeManualCall?.arguments?.waitForUnlock !== true) {
-    throw new Error(`bridge step did not include safe manual MCP call ${JSON.stringify(bridgeStep, null, 2)}`);
+  if (dataBridgeRequirement?.evidence?.runtimeFallbackReadiness?.ok !== true) {
+    throw new Error(`data bridge requirement did not record runtime fallback readiness ${JSON.stringify(dataBridgeRequirement, null, 2)}`);
   }
-  if (bridgeStep.safeManualCall?.followUp?.tool !== "witch_watch_bridge_load") {
-    throw new Error(`bridge step did not include bridge watch follow-up ${JSON.stringify(bridgeStep, null, 2)}`);
+  if (nativeBattleRequirement?.evidence?.runtimeFallbackReadiness?.battleObservationOk !== true) {
+    throw new Error(`native battle requirement did not record runtime battle observation fallback ${JSON.stringify(nativeBattleRequirement, null, 2)}`);
   }
-  if (!String(bridgeMissing?.nextAction || "").includes("手动关闭游戏释放 DLL")) {
-    throw new Error(`completion audit did not include actionable manual close guidance ${JSON.stringify(audit.missing, null, 2)}`);
+  if (!missingNames.has("legal_action_live_sample_observed") || !missingNames.has("scene_live_sample_observed") || !missingNames.has("battle_live_sample_observed")) {
+    throw new Error(`fallback audit should keep live-sample requirements strict ${JSON.stringify(audit.missing, null, 2)}`);
   }
 } finally {
   child.kill();
@@ -87,37 +84,72 @@ try {
   await fs.rm(tempRoot, { recursive: true, force: true });
 }
 
-console.log("ok: no-mouse manual bridge guidance");
+console.log("ok: runtime fallback completion audit");
 
-function respond(response, data, statusCode = 200) {
-  response.writeHead(statusCode, { "content-type": "application/json" });
-  response.end(JSON.stringify(data));
-}
-
-function commandResult(command) {
+function commandResult(command, params) {
   switch (command) {
     case "status":
-      return { ok: true, data: { bridge: "CodexMcpBridge", version: "0.9.0" } };
+      return { ok: true, data: { bridge: "CodexMcpBridge", version: "0.9.0-old" } };
     case "runtime.inspect":
       return { ok: true, data: { types: fakeRuntimeTypes() } };
+    case "runtime.invoke_static":
+      return runtimeStaticResult(params || {});
+    case "runtime.objects":
+      return { ok: true, data: { objects: [] } };
     case "ui.snapshot":
-      return {
-        ok: true,
-        data: {
-          TotalNodes: 1,
-          Windows: [{ WindowName: "MainMenu", NodeId: "window-main", Visible: true, ActiveInHierarchy: true }],
-          Nodes: [{ NodeId: "start", Label: "start journey", WindowName: "MainMenu", Clickable: true, SupportedActions: ["click"] }]
-        }
-      };
     case "scene.snapshot":
-      return { ok: true, data: { SceneName: "MainScene", TotalObjects: 0, Objects: [] } };
     case "game.legal_actions":
-      return { ok: true, data: { Phase: "menu", Actions: [] } };
     case "battle.snapshot":
-      return { ok: false, error: "battle.snapshot unavailable in old bridge" };
+      return { ok: false, error: `System.InvalidOperationException: Unknown command: ${command}` };
     default:
       return { ok: false, error: `unexpected ${command}` };
   }
+}
+
+function runtimeStaticResult(params) {
+  const base = {
+    typeName: params.typeName,
+    methodName: params.methodName
+  };
+  if (params.typeName === "Witch.UI.Automation.RuntimeUiAutomationService" && params.methodName === "CaptureSnapshot") {
+    return {
+      ok: true,
+      data: {
+        ...base,
+        result: {
+          TotalNodes: 1,
+          Windows: [{ WindowName: "MainMenu", NodeId: "window-main", Visible: true, ActiveInHierarchy: true }],
+          Nodes: [{ NodeId: "start", Label: "Start", WindowName: "MainMenu", Clickable: true, SupportedActions: ["click"] }]
+        }
+      }
+    };
+  }
+  if (params.typeName === "Witch.UI.Automation.RuntimeSceneAutomationService" && params.methodName === "CaptureSnapshot") {
+    return {
+      ok: true,
+      data: {
+        ...base,
+        result: {
+          SceneName: "MainScene",
+          TotalObjects: 0,
+          Objects: []
+        }
+      }
+    };
+  }
+  if (params.typeName === "Witch.UI.Automation.RuntimeGameplayAutomationService" && params.methodName === "GetLegalActions") {
+    return {
+      ok: true,
+      data: {
+        ...base,
+        result: {
+          Phase: "menu",
+          Actions: []
+        }
+      }
+    };
+  }
+  return { ok: false, error: `unexpected runtime call ${params.typeName}.${params.methodName}` };
 }
 
 function fakeRuntimeTypes() {
@@ -135,6 +167,11 @@ function serviceType(fullName, methods) {
     fullName,
     members: methods.map(name => ({ kind: "method", name, isStatic: true, parameters: [] }))
   };
+}
+
+function respond(response, data, statusCode = 200) {
+  response.writeHead(statusCode, { "content-type": "application/json" });
+  response.end(JSON.stringify(data));
 }
 
 function collectMcpMessages(processHandle) {

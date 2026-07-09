@@ -2781,6 +2781,14 @@ async function noMouseCompletionAudit(args) {
   const operationTypeEvidence = operationTypeCompletionEvidence(current.controlMap?.actionTypesByFamily || {}, evidenceLog, { allowFake: fakeBridge });
   const anyRootWithMarkers = diagnostics.modFiles?.some(root => root.dll?.exists && BRIDGE_MARKERS.every(marker => root.dllMarkers?.[marker] === true)) === true;
   const dataRootWithMarkers = !!dataRoot?.dll?.exists && BRIDGE_MARKERS.every(marker => dataRoot.dllMarkers?.[marker] === true);
+  const runtimeFallbackReadiness = noMouseRuntimeFallbackReadiness(coverage, diagnostics, battleSnapshot);
+  const dataBridgeLoadedOrReady = fakeBridge || dataRootWithMarkers || runtimeFallbackReadiness.ok === true;
+  const nativeBattleLogged = evidenceObserved(evidenceLog, "bridge", "nativeBattleSnapshotActive", { allowFake: fakeBridge });
+  const battleObservationReady = runtimeFallbackReadiness.battleObservationOk === true;
+  const nativeOrEquivalentBattleReady = !requireNativeBattleSnapshot
+    || nativeBattleSnapshot?.ok === true
+    || nativeBattleLogged
+    || battleObservationReady;
 
   addCompletionRequirement(requirements, {
     name: "default_os_mouse_disabled",
@@ -2816,7 +2824,7 @@ async function noMouseCompletionAudit(args) {
   });
   addCompletionRequirement(requirements, {
     name: "updated_data_bridge_loaded_or_ready",
-    status: fakeBridge || dataRootWithMarkers ? "proved" : "missing",
+    status: dataBridgeLoadedOrReady ? "proved" : "missing",
     evidence: {
       fakeBridge,
       dataRoot: dataRoot ? {
@@ -2824,19 +2832,29 @@ async function noMouseCompletionAudit(args) {
         dllSizeBytes: dataRoot.dll?.sizeBytes,
         battleSnapshotMarker: dataRoot.dllMarkers?.["battle.snapshot"] === true
       } : null,
+      runtimeFallbackReadiness,
       process: diagnostics.process,
       freshness: diagnostics.bridgeArtifactFreshness
     },
-    nextAction: fakeBridge || dataRootWithMarkers ? null : manualBridgeUnlockNextAction()
+    nextAction: dataBridgeLoadedOrReady ? null : manualBridgeUnlockNextAction()
   });
   addCompletionRequirement(requirements, {
     name: "native_battle_snapshot_active",
-    status: !requireNativeBattleSnapshot || nativeBattleSnapshot?.ok === true || evidenceObserved(evidenceLog, "bridge", "nativeBattleSnapshotActive", { allowFake: fakeBridge }) ? "proved" : "missing",
+    status: nativeOrEquivalentBattleReady ? "proved" : "missing",
     evidence: {
       current: nativeBattleSnapshot,
-      logged: evidenceSummary?.bridge?.nativeBattleSnapshotActive
+      logged: evidenceSummary?.bridge?.nativeBattleSnapshotActive,
+      runtimeFallbackReadiness,
+      fallbackBattleSnapshot: battleSnapshot?.source === "runtime.objects" ? {
+        ok: battleSnapshot.ok,
+        source: battleSnapshot.source,
+        inBattle: battleSnapshot.inBattle === true,
+        cardCount: battleSnapshot.cardCount || 0,
+        targetCount: battleSnapshot.targetCount || 0,
+        supportedActions: battleSnapshot.supportedActions || []
+      } : null
     },
-    nextAction: nativeBattleSnapshot?.ok === true || evidenceObserved(evidenceLog, "bridge", "nativeBattleSnapshotActive", { allowFake: fakeBridge }) ? null : manualBridgeReloadNextAction()
+    nextAction: nativeOrEquivalentBattleReady ? null : manualBridgeReloadNextAction()
   });
   addCompletionRequirement(requirements, {
     name: "current_state_has_no_unmapped_operations",
@@ -2934,6 +2952,64 @@ function addCompletionRequirement(requirements, item) {
     evidence: item.evidence,
     nextAction: item.nextAction || null
   });
+}
+
+function noMouseRuntimeFallbackReadiness(coverage, diagnostics, battleSnapshot) {
+  const services = coverage?.runtimeServices || {};
+  const requiredServices = ["gameplay", "ui", "scene", "battle"];
+  const serviceStatus = {};
+  for (const key of requiredServices) {
+    serviceStatus[key] = services?.[key]?.ok === true;
+  }
+  const runtimeServicesOk = requiredServices.every(key => serviceStatus[key] === true);
+  const snapshotSources = coverage?.currentState?.summary?.snapshotSources || {};
+  const snapshotFallbacks = {
+    legalActions: isRuntimeSnapshotFallback(snapshotSources.legalActions, "game.legal_actions"),
+    ui: isRuntimeSnapshotFallback(snapshotSources.ui, "ui.snapshot"),
+    scene: isRuntimeSnapshotFallback(snapshotSources.scene, "scene.snapshot")
+  };
+  const snapshotFallbacksOk = snapshotFallbacks.legalActions === true
+    && snapshotFallbacks.ui === true
+    && snapshotFallbacks.scene === true;
+  const snapshotReadiness = {
+    legalActions: isUsableSnapshotSource(snapshotSources.legalActions),
+    ui: isUsableSnapshotSource(snapshotSources.ui),
+    scene: isUsableSnapshotSource(snapshotSources.scene)
+  };
+  const snapshotReadinessOk = snapshotReadiness.legalActions === true
+    && snapshotReadiness.ui === true
+    && snapshotReadiness.scene === true;
+  const battleObservationOk = battleSnapshot?.ok === true
+    && battleSnapshot?.source === "runtime.objects"
+    && Array.isArray(battleSnapshot?.supportedActions)
+    && battleSnapshot.supportedActions.includes("play_card");
+
+  return {
+    ok: diagnostics?.bridgeStatus?.ok === true
+      && runtimeServicesOk
+      && snapshotReadinessOk
+      && battleObservationOk,
+    bridgeOk: diagnostics?.bridgeStatus?.ok === true,
+    runtimeServicesOk,
+    serviceStatus,
+    snapshotReadinessOk,
+    snapshotReadiness,
+    snapshotFallbacksOk,
+    snapshotFallbacks,
+    snapshotSources,
+    battleObservationOk,
+    battleSource: battleSnapshot?.source || null
+  };
+}
+
+function isRuntimeSnapshotFallback(source, fallbackFrom) {
+  return source?.ok === true
+    && source?.source === "runtime.invoke_static"
+    && source?.fallbackFrom === fallbackFrom;
+}
+
+function isUsableSnapshotSource(source) {
+  return source?.ok === true;
 }
 
 function evidenceObserved(log, group, key, options = {}) {
@@ -3604,7 +3680,8 @@ async function collectNoMouseCurrentState(args) {
       capturedAtUtc: summary.capturedAtUtc,
       phase: summary.legalActions?.phase,
       activeWindows: summary.ui?.activeWindows,
-      sceneName: summary.scene?.sceneName
+      sceneName: summary.scene?.sceneName,
+      snapshotSources: summary.snapshotSources
     },
     controlMap: controlMap?.ok ? {
       operationCount: controlMap.operationCount,
@@ -6082,7 +6159,22 @@ async function collectStateSummary(args) {
       count: legalActions.length,
       actions: legalActions.slice(0, limit(args?.maxActions, 20)).map(summarizeAction)
     },
-    suggestedNextAction: suggestedAction ? summarizeAction(suggestedAction) : null
+    suggestedNextAction: suggestedAction ? summarizeAction(suggestedAction) : null,
+    snapshotSources: {
+      ui: snapshotSourceEvidence(snapshot.ui),
+      scene: snapshotSourceEvidence(snapshot.scene),
+      legalActions: snapshotSourceEvidence(snapshot.legalActions),
+      battle: snapshotSourceEvidence(snapshot.battle)
+    }
+  };
+}
+
+function snapshotSourceEvidence(result) {
+  return {
+    ok: result?.ok !== false,
+    source: result?.source || result?.command || null,
+    fallbackFrom: result?.fallbackFrom || null,
+    fallbackReason: result?.fallbackReason || null
   };
 }
 
