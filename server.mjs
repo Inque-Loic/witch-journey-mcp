@@ -14,6 +14,7 @@ const WORKSPACE_ROOT = process.env.WITCH_JOURNEY_GAME_ROOT
   ? path.resolve(process.env.WITCH_JOURNEY_GAME_ROOT)
   : path.resolve(SERVER_DIR, "..", "..");
 const PLAYER_LOG_PATH = path.join(os.homedir(), "AppData", "LocalLow", "MeowAlive", "Witch's Apocalyptic Journey", "Player.log");
+const NO_MOUSE_EVIDENCE_LOG_PATH = process.env.WITCH_JOURNEY_EVIDENCE_LOG || path.join(SERVER_DIR, ".witch-no-mouse-evidence.json");
 const BRIDGE_MARKERS = [
   "0.9.0",
   "screen.info",
@@ -139,6 +140,21 @@ const tools = [
     }
   },
   {
+    name: "witch_no_mouse_record_evidence",
+    description: "Record a compact no-mouse evidence sample for the current game state so completion can be proven across multiple UI, scene, legal-action, and battle states over time.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reset: { type: "boolean", default: false },
+        note: { type: "string", default: "" },
+        includePolicyTests: { type: "boolean", default: false },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_no_mouse_completion_audit",
     description: "Strictly audit whether the no-mouse takeover goal is fully proven across gameplay, UI, scene, and battle operation families. Returns complete=false when evidence is missing.",
     inputSchema: {
@@ -149,7 +165,8 @@ const tools = [
         includeHidden: { type: "boolean", default: false },
         onlyInteractive: { type: "boolean", default: true },
         requireLiveSamples: { type: "boolean", default: true },
-        requireNativeBattleSnapshot: { type: "boolean", default: true }
+        requireNativeBattleSnapshot: { type: "boolean", default: true },
+        includeEvidenceLog: { type: "boolean", default: true }
       },
       additionalProperties: false
     }
@@ -1172,6 +1189,9 @@ async function handleRequest(request) {
     if (toolName === "witch_no_mouse_coverage") {
       return toolResult(id, await noMouseCoverage(args));
     }
+    if (toolName === "witch_no_mouse_record_evidence") {
+      return toolResult(id, await recordNoMouseEvidence(args));
+    }
     if (toolName === "witch_no_mouse_completion_audit") {
       return toolResult(id, await noMouseCompletionAudit(args));
     }
@@ -1699,6 +1719,7 @@ function localCapabilities() {
         "witch_auto_step",
         "witch_control_map",
         "witch_no_mouse_coverage",
+        "witch_no_mouse_record_evidence",
         "witch_no_mouse_completion_audit",
         "witch_battle_snapshot",
         "witch_ui_interact",
@@ -1731,6 +1752,7 @@ function localCapabilities() {
       "Use witch_window_focus before fallback input when focus is uncertain.",
       "No-mouse mode is enabled by default; use legal actions, UI automation, scene automation, and runtime tools instead of witch_input_mouse.",
       "Use witch_no_mouse_coverage to prove the running game has the required no-mouse runtime services and current control-map evidence.",
+      "Use witch_no_mouse_record_evidence while moving through different game states; strict completion audit can combine these samples across time.",
       "Use witch_no_mouse_completion_audit before claiming full takeover: it requires per-family evidence and reports complete=false when a game state has not been witnessed yet.",
       "Use witch_input_key and witch_input_text only as fallback controls when typed game/UI/scene automation is insufficient. witch_input_mouse is refused unless noMouse is explicitly disabled.",
       "Use witch_runtime_inspect to discover loaded game automation/debug surfaces when typed tools do not cover a needed operation.",
@@ -1863,9 +1885,187 @@ async function noMouseCoverage(args) {
   };
 }
 
+async function recordNoMouseEvidence(args) {
+  const existing = args?.reset === true ? emptyNoMouseEvidenceLog() : await readNoMouseEvidenceLog();
+  const sample = await collectNoMouseEvidenceSample(args || {});
+  const merged = mergeNoMouseEvidence(existing, sample);
+  await writeNoMouseEvidenceLog(merged);
+  return {
+    ok: true,
+    capturedAtUtc: sample.capturedAtUtc,
+    reset: args?.reset === true,
+    path: NO_MOUSE_EVIDENCE_LOG_PATH,
+    sample,
+    summary: summarizeNoMouseEvidenceLog(merged)
+  };
+}
+
+async function collectNoMouseEvidenceSample(args) {
+  const coverage = await noMouseCoverage({
+    includeCurrentState: true,
+    includePolicyTests: args?.includePolicyTests === true,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+  const diagnostics = await runtimeDiagnostics({ includeLogTail: false });
+  const nativeBattleSnapshot = await safeCallBridge("battle.snapshot", {
+    includeInactive: false,
+    maxCards: 20,
+    maxTargets: 20
+  });
+  const battleSnapshot = nativeBattleSnapshot?.ok === true
+    ? await collectBattleSnapshot({ maxCards: 20, maxTargets: 20 })
+    : await collectBattleSnapshotFromRuntime({ maxCards: 20, maxTargets: 20 });
+  const current = coverage.currentState || {};
+  const byFamily = current.controlMap?.byFamily || {};
+  const dataRoot = diagnostics.modFiles?.find(item => containsText(item.root, "Witch's Apocalyptic Journey_Data"));
+  const fakeBridge = diagnostics.bridgeStatus?.data?.bridge === "fake";
+  const dataRootWithMarkers = !!dataRoot?.dll?.exists && BRIDGE_MARKERS.every(marker => dataRoot.dllMarkers?.[marker] === true);
+  return {
+    capturedAtUtc: new Date().toISOString(),
+    note: typeof args?.note === "string" ? args.note.slice(0, 240) : "",
+    bridge: {
+      fakeBridge,
+      statusOk: diagnostics.bridgeStatus?.ok === true,
+      name: diagnostics.bridgeStatus?.data?.bridge || null,
+      dataRootWithMarkers,
+      nativeBattleSnapshotActive: nativeBattleSnapshot?.ok === true
+    },
+    state: {
+      phase: current.summary?.phase || "unknown",
+      sceneName: current.summary?.sceneName || null,
+      activeWindows: Array.isArray(current.summary?.activeWindows)
+        ? current.summary.activeWindows.map(item => item.windowName || item.nodeId || item.transformPath).filter(Boolean).slice(0, 12)
+        : [],
+      operationCount: Number(current.controlMap?.operationCount || 0),
+      readyOperationCount: Number(current.controlMap?.readyOperationCount || 0),
+      unmappedCount: Number(current.controlMap?.unmappedCount || 0),
+      byFamily
+    },
+    families: {
+      ui: {
+        observed: Number(byFamily.ui || 0) > 0 || Number(current.clickableUiCount || 0) > 0,
+        mappedOperations: Number(byFamily.ui || 0),
+        clickableUiCount: Number(current.clickableUiCount || 0)
+      },
+      legal_action: {
+        observed: Number(byFamily.legal_action || 0) > 0 || Number(current.legalActionCount || 0) > 0,
+        mappedOperations: Number(byFamily.legal_action || 0),
+        legalActionCount: Number(current.legalActionCount || 0)
+      },
+      scene: {
+        observed: Number(byFamily.scene || 0) > 0 || Number(current.interactiveSceneObjectCount || 0) > 0,
+        mappedOperations: Number(byFamily.scene || 0),
+        interactiveSceneObjectCount: Number(current.interactiveSceneObjectCount || 0)
+      },
+      battle: {
+        observed: Number(byFamily.battle || 0) > 0 || battleSnapshot?.inBattle === true,
+        mappedOperations: Number(byFamily.battle || 0),
+        inBattle: battleSnapshot?.inBattle === true,
+        cardCount: Number(battleSnapshot?.cardCount || 0),
+        targetCount: Number(battleSnapshot?.targetCount || 0),
+        source: battleSnapshot?.source || null
+      }
+    }
+  };
+}
+
+function emptyNoMouseEvidenceLog() {
+  return {
+    version: 1,
+    objective: "no_mouse_takeover",
+    createdAtUtc: new Date().toISOString(),
+    updatedAtUtc: null,
+    samples: [],
+    families: {},
+    bridge: {}
+  };
+}
+
+async function readNoMouseEvidenceLog() {
+  try {
+    const raw = await fs.readFile(NO_MOUSE_EVIDENCE_LOG_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.version === 1 && Array.isArray(parsed.samples)) return parsed;
+  } catch {
+    // Missing or unreadable evidence logs are treated as empty; recording will recreate them.
+  }
+  return emptyNoMouseEvidenceLog();
+}
+
+async function writeNoMouseEvidenceLog(log) {
+  await fs.writeFile(NO_MOUSE_EVIDENCE_LOG_PATH, JSON.stringify(log, null, 2) + "\n", "utf8");
+}
+
+function mergeNoMouseEvidence(log, sample) {
+  const merged = {
+    ...emptyNoMouseEvidenceLog(),
+    ...log,
+    updatedAtUtc: sample.capturedAtUtc,
+    samples: [...(Array.isArray(log.samples) ? log.samples : []), sample].slice(-100),
+    families: { ...(log.families || {}) },
+    bridge: { ...(log.bridge || {}) }
+  };
+  for (const familyName of ["ui", "legal_action", "scene", "battle"]) {
+    const family = sample.families?.[familyName];
+    if (family?.observed) {
+      merged.families[familyName] = {
+        observed: true,
+        provedAtUtc: sample.capturedAtUtc,
+        evidence: family,
+        bridge: sample.bridge,
+        state: sample.state,
+        note: sample.note || ""
+      };
+    }
+  }
+  if (sample.bridge?.nativeBattleSnapshotActive) {
+    merged.bridge.nativeBattleSnapshotActive = {
+      observed: true,
+      provedAtUtc: sample.capturedAtUtc,
+      evidence: sample.bridge
+    };
+  }
+  if (sample.bridge?.dataRootWithMarkers) {
+    merged.bridge.updatedDataBridgeReady = {
+      observed: true,
+      provedAtUtc: sample.capturedAtUtc,
+      evidence: sample.bridge
+    };
+  }
+  return merged;
+}
+
+function summarizeNoMouseEvidenceLog(log) {
+  const families = log?.families || {};
+  const bridge = log?.bridge || {};
+  return {
+    path: NO_MOUSE_EVIDENCE_LOG_PATH,
+    sampleCount: Array.isArray(log?.samples) ? log.samples.length : 0,
+    updatedAtUtc: log?.updatedAtUtc || null,
+    families: {
+      ui: evidenceFamilySummary(families.ui),
+      legal_action: evidenceFamilySummary(families.legal_action),
+      scene: evidenceFamilySummary(families.scene),
+      battle: evidenceFamilySummary(families.battle)
+    },
+    bridge: {
+      nativeBattleSnapshotActive: evidenceFamilySummary(bridge.nativeBattleSnapshotActive),
+      updatedDataBridgeReady: evidenceFamilySummary(bridge.updatedDataBridgeReady)
+    }
+  };
+}
+
+function evidenceFamilySummary(item) {
+  return item?.observed
+    ? { observed: true, provedAtUtc: item.provedAtUtc, evidence: item.evidence, bridge: item.bridge || item.evidence || null }
+    : { observed: false };
+}
+
 async function noMouseCompletionAudit(args) {
   const requireLiveSamples = args?.requireLiveSamples !== false;
   const requireNativeBattleSnapshot = args?.requireNativeBattleSnapshot !== false;
+  const includeEvidenceLog = args?.includeEvidenceLog !== false;
   const coverage = await noMouseCoverage({
     includeCurrentState: args?.includeCurrentState !== false,
     includePolicyTests: args?.includePolicyTests !== false,
@@ -1885,6 +2085,8 @@ async function noMouseCompletionAudit(args) {
   const current = coverage.currentState || {};
   const families = coverage.families || [];
   const byFamily = current.controlMap?.byFamily || {};
+  const evidenceLog = includeEvidenceLog ? await readNoMouseEvidenceLog() : null;
+  const evidenceSummary = evidenceLog ? summarizeNoMouseEvidenceLog(evidenceLog) : null;
   const dataRoot = diagnostics.modFiles?.find(item => containsText(item.root, "Witch's Apocalyptic Journey_Data"));
   const fakeBridge = diagnostics.bridgeStatus?.data?.bridge === "fake";
   const anyRootWithMarkers = diagnostics.modFiles?.some(root => root.dll?.exists && BRIDGE_MARKERS.every(marker => root.dllMarkers?.[marker] === true)) === true;
@@ -1939,9 +2141,12 @@ async function noMouseCompletionAudit(args) {
   });
   addCompletionRequirement(requirements, {
     name: "native_battle_snapshot_active",
-    status: !requireNativeBattleSnapshot || nativeBattleSnapshot?.ok === true ? "proved" : "missing",
-    evidence: nativeBattleSnapshot,
-    nextAction: nativeBattleSnapshot?.ok === true ? null : "运行中的桥还不认识 battle.snapshot；需要重启游戏加载新版桥 DLL 后再验证。"
+    status: !requireNativeBattleSnapshot || nativeBattleSnapshot?.ok === true || evidenceObserved(evidenceLog, "bridge", "nativeBattleSnapshotActive", { allowFake: fakeBridge }) ? "proved" : "missing",
+    evidence: {
+      current: nativeBattleSnapshot,
+      logged: evidenceSummary?.bridge?.nativeBattleSnapshotActive
+    },
+    nextAction: nativeBattleSnapshot?.ok === true || evidenceObserved(evidenceLog, "bridge", "nativeBattleSnapshotActive", { allowFake: fakeBridge }) ? null : "运行中的桥还不认识 battle.snapshot；需要重启游戏加载新版桥 DLL 后再验证。"
   });
   addCompletionRequirement(requirements, {
     name: "current_state_has_no_unmapped_operations",
@@ -1950,32 +2155,44 @@ async function noMouseCompletionAudit(args) {
   });
   addCompletionRequirement(requirements, {
     name: "ui_live_sample_observed",
-    status: !requireLiveSamples || Number(byFamily.ui || 0) > 0 || Number(current.clickableUiCount || 0) > 0 ? "proved" : "missing",
-    evidence: { mappedOperations: byFamily.ui || 0, clickableUiCount: current.clickableUiCount || 0 }
+    status: !requireLiveSamples || Number(byFamily.ui || 0) > 0 || Number(current.clickableUiCount || 0) > 0 || evidenceObserved(evidenceLog, "families", "ui", { allowFake: fakeBridge }) ? "proved" : "missing",
+    evidence: {
+      current: { mappedOperations: byFamily.ui || 0, clickableUiCount: current.clickableUiCount || 0 },
+      logged: evidenceSummary?.families?.ui
+    }
   });
   addCompletionRequirement(requirements, {
     name: "legal_action_live_sample_observed",
-    status: !requireLiveSamples || Number(byFamily.legal_action || 0) > 0 || Number(current.legalActionCount || 0) > 0 ? "proved" : "missing",
-    evidence: { mappedOperations: byFamily.legal_action || 0, legalActionCount: current.legalActionCount || 0 },
-    nextAction: Number(byFamily.legal_action || 0) > 0 || Number(current.legalActionCount || 0) > 0 ? null : "进入会暴露游戏合法动作的流程状态，再采集 witch_no_mouse_completion_audit。"
+    status: !requireLiveSamples || Number(byFamily.legal_action || 0) > 0 || Number(current.legalActionCount || 0) > 0 || evidenceObserved(evidenceLog, "families", "legal_action", { allowFake: fakeBridge }) ? "proved" : "missing",
+    evidence: {
+      current: { mappedOperations: byFamily.legal_action || 0, legalActionCount: current.legalActionCount || 0 },
+      logged: evidenceSummary?.families?.legal_action
+    },
+    nextAction: Number(byFamily.legal_action || 0) > 0 || Number(current.legalActionCount || 0) > 0 || evidenceObserved(evidenceLog, "families", "legal_action", { allowFake: fakeBridge }) ? null : "进入会暴露游戏合法动作的流程状态，调用 witch_no_mouse_record_evidence 记录样本，再采集 witch_no_mouse_completion_audit。"
   });
   addCompletionRequirement(requirements, {
     name: "scene_live_sample_observed",
-    status: !requireLiveSamples || Number(byFamily.scene || 0) > 0 || Number(current.interactiveSceneObjectCount || 0) > 0 ? "proved" : "missing",
-    evidence: { mappedOperations: byFamily.scene || 0, interactiveSceneObjectCount: current.interactiveSceneObjectCount || 0 },
-    nextAction: Number(byFamily.scene || 0) > 0 || Number(current.interactiveSceneObjectCount || 0) > 0 ? null : "进入有可交互场景对象的游戏状态，再采集场景操作样本。"
+    status: !requireLiveSamples || Number(byFamily.scene || 0) > 0 || Number(current.interactiveSceneObjectCount || 0) > 0 || evidenceObserved(evidenceLog, "families", "scene", { allowFake: fakeBridge }) ? "proved" : "missing",
+    evidence: {
+      current: { mappedOperations: byFamily.scene || 0, interactiveSceneObjectCount: current.interactiveSceneObjectCount || 0 },
+      logged: evidenceSummary?.families?.scene
+    },
+    nextAction: Number(byFamily.scene || 0) > 0 || Number(current.interactiveSceneObjectCount || 0) > 0 || evidenceObserved(evidenceLog, "families", "scene", { allowFake: fakeBridge }) ? null : "进入有可交互场景对象的游戏状态，调用 witch_no_mouse_record_evidence 记录场景操作样本。"
   });
   addCompletionRequirement(requirements, {
     name: "battle_live_sample_observed",
-    status: !requireLiveSamples || Number(byFamily.battle || 0) > 0 || battleSnapshot?.inBattle === true ? "proved" : "missing",
+    status: !requireLiveSamples || Number(byFamily.battle || 0) > 0 || battleSnapshot?.inBattle === true || evidenceObserved(evidenceLog, "families", "battle", { allowFake: fakeBridge }) ? "proved" : "missing",
     evidence: {
-      mappedOperations: byFamily.battle || 0,
-      inBattle: battleSnapshot?.inBattle === true,
-      cardCount: battleSnapshot?.cardCount || 0,
-      targetCount: battleSnapshot?.targetCount || 0,
-      supportedActions: battleSnapshot?.supportedActions || []
+      current: {
+        mappedOperations: byFamily.battle || 0,
+        inBattle: battleSnapshot?.inBattle === true,
+        cardCount: battleSnapshot?.cardCount || 0,
+        targetCount: battleSnapshot?.targetCount || 0,
+        supportedActions: battleSnapshot?.supportedActions || []
+      },
+      logged: evidenceSummary?.families?.battle
     },
-    nextAction: battleSnapshot?.inBattle === true ? null : "进入一场战斗，再验证 witch_battle_snapshot 能看到手牌/目标，并用 dry-run 或安全策略验证 witch_play_card 参数路径。"
+    nextAction: battleSnapshot?.inBattle === true || evidenceObserved(evidenceLog, "families", "battle", { allowFake: fakeBridge }) ? null : "进入一场战斗，再调用 witch_no_mouse_record_evidence 记录手牌/目标，并验证 witch_play_card 参数路径。"
   });
 
   const missing = requirements.filter(item => item.status !== "proved");
@@ -1986,6 +2203,7 @@ async function noMouseCompletionAudit(args) {
     strict: true,
     requireLiveSamples,
     requireNativeBattleSnapshot,
+    includeEvidenceLog,
     requirements,
     missing: missing.map(item => ({
       name: item.name,
@@ -1997,6 +2215,7 @@ async function noMouseCompletionAudit(args) {
       : "No-mouse takeover is implemented for the exposed families, but full completion is not proven by the current live evidence.",
     coverage,
     battleSnapshot,
+    evidenceLog: evidenceSummary,
     diagnostics: {
       bridgeStatus: diagnostics.bridgeStatus,
       bridgeArtifactFreshness: diagnostics.bridgeArtifactFreshness,
@@ -2017,6 +2236,14 @@ function addCompletionRequirement(requirements, item) {
     evidence: item.evidence,
     nextAction: item.nextAction || null
   });
+}
+
+function evidenceObserved(log, group, key, options = {}) {
+  const item = log?.[group]?.[key];
+  if (item?.observed !== true) return false;
+  if (options.allowFake === true) return true;
+  const bridge = item.bridge || item.evidence || {};
+  return bridge.fakeBridge !== true;
 }
 
 async function inspectNoMouseRuntimeServices() {
@@ -2369,6 +2596,7 @@ async function takeoverAudit(args) {
     "witch_takeover_audit",
     "witch_no_mouse_audit",
     "witch_no_mouse_coverage",
+    "witch_no_mouse_record_evidence",
     "witch_no_mouse_completion_audit",
     "witch_takeover_step",
     "witch_takeover_drive",
@@ -4367,6 +4595,8 @@ async function executeBatchStep(step, options) {
       return noMouseAudit(args);
     case "witch_no_mouse_coverage":
       return noMouseCoverage(args);
+    case "witch_no_mouse_record_evidence":
+      return recordNoMouseEvidence(args);
     case "witch_no_mouse_completion_audit":
       return noMouseCompletionAudit(args);
     case "witch_status":

@@ -42,6 +42,7 @@ try {
     env: {
       ...process.env,
       WITCH_JOURNEY_BRIDGE_URL: `http://127.0.0.1:${port}`,
+      WITCH_JOURNEY_EVIDENCE_LOG: path.join(tempDir, "evidence.json"),
       WITCH_E2E_ALLOW_FAKE_NO_PROCESS: "1"
     },
     stdio: ["ignore", "pipe", "pipe"]

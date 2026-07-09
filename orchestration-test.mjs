@@ -317,7 +317,11 @@ await once(bridge, "listening");
 
 const child = spawn(process.execPath, ["server.mjs"], {
   cwd: new URL(".", import.meta.url),
-  env: { ...process.env, WITCH_JOURNEY_BRIDGE_URL: `http://127.0.0.1:${port}` },
+  env: {
+    ...process.env,
+    WITCH_JOURNEY_BRIDGE_URL: `http://127.0.0.1:${port}`,
+    WITCH_JOURNEY_EVIDENCE_LOG: path.join(tempDir, "evidence.json")
+  },
   stdio: ["pipe", "pipe", "inherit"]
 });
 
@@ -473,9 +477,10 @@ send(43, "tools/call", { name: "witch_auto_step", arguments: { dryRun: false, la
 send(44, "tools/call", { name: "witch_no_mouse_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 send(45, "tools/call", { name: "witch_control_map", arguments: { includeHidden: false, onlyInteractive: true } });
 send(46, "tools/call", { name: "witch_no_mouse_coverage", arguments: { includeCurrentState: true, includePolicyTests: true } });
-send(47, "tools/call", { name: "witch_no_mouse_completion_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
+send(47, "tools/call", { name: "witch_no_mouse_record_evidence", arguments: { reset: true, note: "orchestration-test" } });
+send(48, "tools/call", { name: "witch_no_mouse_completion_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 
-for (let id = 2; id <= 47; id++) {
+for (let id = 2; id <= 48; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -536,9 +541,10 @@ const policyDeniedAutoStep = textResult(43);
 const noMouseAudit = textResult(44);
 const controlMap = textResult(45);
 const noMouseCoverage = textResult(46);
-const noMouseCompletionAudit = textResult(47);
+const noMouseEvidence = textResult(47);
+const noMouseCompletionAudit = textResult(48);
 
-if (!capabilities.ok || capabilities.tools.length < 50 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 51 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -594,6 +600,9 @@ if (!controlMap.ok || controlMap.noMouseDefault !== true || controlMap.operation
 }
 if (!noMouseCoverage.ok || noMouseCoverage.checks?.some(item => !item.ok) || noMouseCoverage.families?.some(item => !item.runtime?.ok)) {
   throw new Error(`bad no-mouse coverage ${JSON.stringify(noMouseCoverage, null, 2)}`);
+}
+if (!noMouseEvidence.ok || noMouseEvidence.summary?.sampleCount < 1 || noMouseEvidence.summary?.families?.battle?.observed !== true) {
+  throw new Error(`bad no-mouse evidence record ${JSON.stringify(noMouseEvidence, null, 2)}`);
 }
 if (!noMouseCompletionAudit.complete || noMouseCompletionAudit.requirements?.some(item => item.status !== "proved")) {
   throw new Error(`bad no-mouse completion audit ${JSON.stringify(noMouseCompletionAudit, null, 2)}`);

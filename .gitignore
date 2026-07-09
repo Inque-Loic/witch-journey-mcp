@@ -6,4 +6,5 @@ STATUS.md
 *.tmp
 *.log
 *.png
+.witch-no-mouse-evidence.json
 !bridge-mod/Icon.png

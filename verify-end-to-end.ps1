@@ -102,7 +102,7 @@ Assert-Field ($restartDenied.reason -eq "restart_confirmation_required") "witch_
 Write-Host "6. Calling witch_capabilities through MCP..."
 $capabilities = Invoke-WitchMcpJson witch_capabilities
 Assert-WitchOk $capabilities "witch_capabilities"
-Assert-Field (@($capabilities.tools).Count -ge 50) "witch_capabilities returned too few tools" $capabilities
+Assert-Field (@($capabilities.tools).Count -ge 51) "witch_capabilities returned too few tools" $capabilities
 
 Write-Host "7. Calling witch_runtime_diagnostics through MCP..."
 $diagnostics = Invoke-WitchMcpJson witch_runtime_diagnostics @{ includeLogTail = $false }
@@ -246,7 +246,11 @@ Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-action-policy.ps1")
 Write-Host "35. Verifying no-mouse policy through MCP..."
 Invoke-CheckedScript (Join-Path $PSScriptRoot "verify-no-mouse-policy.ps1")
 
-Write-Host "36. Calling strict no-mouse completion audit through MCP..."
+Write-Host "36. Recording current no-mouse evidence sample through MCP..."
+$evidence = Invoke-WitchMcpJson witch_no_mouse_record_evidence @{ note = "verify-end-to-end"; includePolicyTests = $false }
+Assert-Field ($evidence.ok -eq $true) "witch_no_mouse_record_evidence did not return ok=true" $evidence
+
+Write-Host "37. Calling strict no-mouse completion audit through MCP..."
 $completionAudit = Invoke-WitchMcpJson witch_no_mouse_completion_audit @{ includeCurrentState = $true; includePolicyTests = $true }
 Assert-Field ($null -ne $completionAudit.complete) "witch_no_mouse_completion_audit did not return a completion flag" $completionAudit
 Assert-Field (@($completionAudit.requirements).Count -gt 0) "witch_no_mouse_completion_audit did not return requirements" $completionAudit
