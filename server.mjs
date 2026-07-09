@@ -1645,6 +1645,19 @@ async function restartAndWatchBridge(args) {
     }
   }
 
+  const sync = await syncUpdatedBridgeDllToDataRoot();
+  steps.push({ name: "sync_bridge_dll_to_data_root", result: sync });
+  if (!sync.ok) {
+    return {
+      ok: false,
+      reason: "bridge_dll_sync_failed",
+      steps,
+      diagnostics,
+      nextStep: "sync_bridge_dll",
+      recommendation: "Close the game if it is still running, then copy the updated bridge-mod\\Scripts\\Entry.dll into Witch's Apocalyptic Journey_Data\\Mods\\CodexMcpBridge\\Scripts\\Entry.dll before launching."
+    };
+  }
+
   const launch = await startGameProcess();
   steps.push({ name: "launch_game", result: launch });
   if (!launch.ok) {
