@@ -74,7 +74,7 @@
 
 ## 工具能力
 
-当前 MCP server 暴露 51 个工具，覆盖：
+当前 MCP server 暴露 61 个工具，覆盖：
 
 - 桥接状态检查、等待、重启编排
 - 本地运行时诊断、Mod 文件检查、桥文件新旧检查
@@ -151,6 +151,20 @@ powershell -ExecutionPolicy Bypass -File .\restart-and-verify.ps1 -ConfirmRestar
 `restart-and-verify.ps1` 会关闭并重启游戏。为了避免误操作，它必须传入 `-ConfirmRestart RESTART_WITCH_GAME` 才会执行。
 确认重启时，MCP 会先在游戏进程退出后把仓库中的新版 `bridge-mod/Scripts/Entry.dll` 同步到游戏 Data Mod 目录，再启动游戏并执行验证。`witch_restart_and_watch_bridge` 和 `witch_no_mouse_restart_collect_audit` 使用同一条同步逻辑。
 `witch_no_mouse_restart_advance_audit` 在没有 `restartConfirm:"RESTART_WITCH_GAME"` 时不会重启游戏，但会返回当前严格审计、缺口计划、状态推进候选和建议调用，方便先审查再执行。
+
+如果目标是证明“完全不使用鼠标也能接管全部游戏内操作”，建议使用专门的证明脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1
+```
+
+不带确认参数时，它只会预览严格审计缺口和当前无鼠标状态推进候选，不会关闭或重启游戏。确认已经保存好进度并希望加载新版桥接 DLL 后，可以运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -ConfirmRestart RESTART_WITCH_GAME
+```
+
+上面的命令会重启游戏、等待桥接上线、记录证据、执行 dry-run 状态推进计划并跑 `witch_no_mouse_completion_audit`。如果你已经审查过候选操作，并允许脚本真实推进游戏状态，可以额外加 `-ExecuteStateAdvance`；如果还允许真实执行操作探针，可以再加 `-ExecuteProbes`。这两个开关都可能改变当前游戏状态，因此默认关闭。
 
 ## 构建桥接 DLL
 
