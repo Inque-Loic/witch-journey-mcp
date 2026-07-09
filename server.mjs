@@ -103,6 +103,19 @@ const tools = [
     }
   },
   {
+    name: "witch_sync_bridge_artifacts",
+    description: "Sync the updated CodexMcpBridge Entry.dll into the game's Data Mod directory without restarting the game. Defaults to dry-run; real sync requires confirm=SYNC_BRIDGE_ARTIFACTS.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dryRun: { type: "boolean", default: true },
+        confirm: { type: "string", description: "Required as SYNC_BRIDGE_ARTIFACTS when dryRun is false." },
+        includeDiagnostics: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_no_mouse_restart_collect_audit",
     description: "Confirmed restart orchestration for the no-mouse goal: restart the game, wait for the bridge, record no-mouse evidence, collect ready probes, and run the strict completion audit.",
     inputSchema: {
@@ -1381,6 +1394,9 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_restart_and_watch_bridge") {
       return toolResult(id, await restartAndWatchBridge(args));
+    }
+    if (toolName === "witch_sync_bridge_artifacts") {
+      return toolResult(id, await syncBridgeArtifacts(args));
     }
     if (toolName === "witch_no_mouse_restart_collect_audit") {
       return toolResult(id, await restartCollectNoMouseAudit(args));
@@ -3406,7 +3422,47 @@ async function verifyLocalOsFallbackControl(args) {
   };
 }
 
-async function syncUpdatedBridgeDllToDataRoot() {
+async function syncBridgeArtifacts(args) {
+  const dryRun = args?.dryRun !== false;
+  if (!dryRun && args?.confirm !== "SYNC_BRIDGE_ARTIFACTS") {
+    return {
+      ok: false,
+      dryRun,
+      reason: "sync_confirmation_required",
+      nextStep: "Pass confirm:\"SYNC_BRIDGE_ARTIFACTS\" to copy the updated bridge DLL into the game Data Mod directory."
+    };
+  }
+
+  const before = args?.includeDiagnostics === false ? null : await runtimeDiagnostics({ includeLogTail: false });
+  const sync = await syncUpdatedBridgeDllToDataRoot({ dryRun });
+  const after = args?.includeDiagnostics === false ? null : await runtimeDiagnostics({ includeLogTail: false });
+  const processRunning = after?.process?.running === true || before?.process?.running === true;
+  const loadedBridgeMayNeedRestart = sync?.ok === true && processRunning && !dryRun;
+  const syncFailed = sync?.ok !== true;
+  return {
+    ok: sync?.ok === true,
+    dryRun,
+    reason: sync?.ok === true
+      ? (dryRun ? "sync_ready" : "synced")
+      : (sync?.reason || "sync_failed"),
+    sync,
+    diagnosticsBefore: before,
+    diagnosticsAfter: after,
+    runtimeEffect: syncFailed
+      ? "The target bridge file was not changed."
+      : (loadedBridgeMayNeedRestart
+        ? "The file is ready for the next game load; the already-running process may still be using the previously loaded DLL until restart."
+        : (dryRun ? "Dry-run only; no files were changed." : "The updated bridge file is present in the Data Mod directory.")),
+    nextStep: syncFailed
+      ? (processRunning ? "Restart the game when you are ready, then run witch_sync_bridge_artifacts or witch_no_mouse_restart_collect_audit." : "Inspect sync.error and copy permissions, then run witch_sync_bridge_artifacts again.")
+      : loadedBridgeMayNeedRestart
+      ? "Restart the game when you are ready, then run witch_no_mouse_restart_collect_audit."
+      : "Run witch_no_mouse_completion_audit to verify the bridge artifact readiness requirement."
+  };
+}
+
+async function syncUpdatedBridgeDllToDataRoot(options = {}) {
+  const dryRun = options?.dryRun === true;
   const destination = path.join(WORKSPACE_ROOT, "Witch's Apocalyptic Journey_Data", "Mods", "CodexMcpBridge", "Scripts", "Entry.dll");
   const candidates = [
     path.join(SERVER_DIR, "bridge-mod", "Scripts", "Entry.dll"),
@@ -3430,6 +3486,21 @@ async function syncUpdatedBridgeDllToDataRoot() {
       markerReady
     });
     if (!markerReady) continue;
+    if (dryRun) {
+      const destinationInfo = await statInfo(destination);
+      const destinationMarkers = destinationInfo.exists ? await scanFileMarkers(destination, BRIDGE_MARKERS) : {};
+      return {
+        ok: true,
+        dryRun: true,
+        wouldCopy: true,
+        source,
+        destination,
+        destinationBefore: destinationInfo,
+        destinationMarkers,
+        sourceMarkers: markers,
+        checked
+      };
+    }
     try {
       await fs.mkdir(path.dirname(destination), { recursive: true });
       await fs.copyFile(source, destination);
@@ -3437,6 +3508,7 @@ async function syncUpdatedBridgeDllToDataRoot() {
       const copiedMarkers = await scanFileMarkers(destination, BRIDGE_MARKERS);
       return {
         ok: BRIDGE_MARKERS.every(marker => copiedMarkers?.[marker] === true),
+        dryRun: false,
         source,
         destination,
         copied,
@@ -3446,6 +3518,8 @@ async function syncUpdatedBridgeDllToDataRoot() {
     } catch (error) {
       return {
         ok: false,
+        dryRun: false,
+        reason: "copy_failed",
         source,
         destination,
         error: error.message,
@@ -3455,6 +3529,7 @@ async function syncUpdatedBridgeDllToDataRoot() {
   }
   return {
     ok: false,
+    dryRun,
     reason: "no_updated_bridge_dll_candidate",
     destination,
     checked
@@ -5800,6 +5875,8 @@ async function executeBatchStep(step, options) {
       return watchBridgeLoad(args);
     case "witch_restart_and_watch_bridge":
       return restartAndWatchBridge(args);
+    case "witch_sync_bridge_artifacts":
+      return syncBridgeArtifacts({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_no_mouse_restart_collect_audit":
       return restartCollectNoMouseAudit(args);
     case "witch_prepare_takeover":

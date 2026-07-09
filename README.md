@@ -80,6 +80,7 @@
 - UI 快照、UI 点击和交互
 - 场景对象快照、场景交互、raycast
 - 截图、窗口聚焦、本地 OS 输入兜底
+- 桥接 DLL 同步检查与确认式同步，例如 `witch_sync_bridge_artifacts`
 - 游戏合法动作、战斗快照、出牌、合法动作匹配、有边界的自动驾驶
 - 运行时类型/对象检查、组件成员枚举、组件方法 dry-run/确认调用、组件属性 dry-run/确认写入、静态运行时方法调用
 - 观察-规划-执行辅助，例如 `witch_control_map`、`witch_execute_operation`、`witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
@@ -122,6 +123,8 @@ npm run e2e-fake
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\wait-and-verify.ps1 -TimeoutSec 180 -IntervalSec 2
 ```
+
+如果只想先确认或同步新版桥接 DLL 到游戏 Data Mod 目录，而不关闭/重启游戏，可以调用 MCP 工具 `witch_sync_bridge_artifacts`。该工具默认 `dryRun:true`，真实复制需要 `dryRun:false` 且传入 `confirm:"SYNC_BRIDGE_ARTIFACTS"`。如果游戏已经在运行，同步后的 DLL 通常要等下一次重启游戏才会被当前进程加载。
 
 如果希望脚本自动重启游戏、等待桥上线、执行审计和完整验证：
 
