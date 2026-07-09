@@ -490,8 +490,9 @@ send(53, "tools/call", { name: "witch_no_mouse_restart_collect_audit", arguments
 send(54, "tools/call", { name: "witch_no_mouse_evidence_drive", arguments: { onlyMissing: false, dryRun: true, maxRounds: 1, maxProbesPerRound: 6, waitAfterMs: 0 } });
 send(55, "tools/call", { name: "witch_no_mouse_watch_evidence", arguments: { dryRun: true, timeoutMs: 1000, pollMs: 50, maxCollections: 2 } });
 send(56, "tools/call", { name: "witch_sync_bridge_artifacts", arguments: { dryRun: true, includeDiagnostics: false } });
+send(57, "tools/call", { name: "witch_no_mouse_state_advance_drive", arguments: { dryRun: true, maxSteps: 2, waitAfterAdvanceMs: 0 } });
 
-for (let id = 2; id <= 56; id++) {
+for (let id = 2; id <= 57; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -562,8 +563,9 @@ const noMouseRestartCollectAuditDenied = textResult(53);
 const noMouseEvidenceDrive = textResult(54);
 const noMouseWatchEvidence = textResult(55);
 const bridgeArtifactSync = textResult(56);
+const noMouseStateAdvanceDrive = textResult(57);
 
-if (!capabilities.ok || capabilities.tools.length < 59 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 60 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -649,6 +651,9 @@ if (!noMouseWatchEvidence.ok || noMouseWatchEvidence.dryRun !== true || noMouseW
 }
 if (!bridgeArtifactSync.ok || bridgeArtifactSync.dryRun !== true || bridgeArtifactSync.reason !== "sync_ready" || bridgeArtifactSync.sync?.wouldCopy !== true || !bridgeArtifactSync.sync?.source || !bridgeArtifactSync.sync?.destination) {
   throw new Error(`bad bridge artifact sync ${JSON.stringify(bridgeArtifactSync, null, 2)}`);
+}
+if (!noMouseStateAdvanceDrive.ok || noMouseStateAdvanceDrive.dryRun !== true || noMouseStateAdvanceDrive.reason !== "already_complete" || noMouseStateAdvanceDrive.complete !== true) {
+  throw new Error(`bad no-mouse state advance drive ${JSON.stringify(noMouseStateAdvanceDrive, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);

@@ -296,6 +296,30 @@ const tools = [
     }
   },
   {
+    name: "witch_no_mouse_state_advance_drive",
+    description: "Run a bounded no-mouse proof loop that can execute ranked state-advance candidates between evidence collection cycles. Defaults to dry-run; real state changes require confirm=ADVANCE_NO_MOUSE_STATE.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        maxSteps: { type: "integer", default: 3 },
+        dryRun: { type: "boolean", default: true },
+        confirm: { type: "string", description: "Required as ADVANCE_NO_MOUSE_STATE when dryRun is false." },
+        collectReadyBeforeAdvance: { type: "boolean", default: true },
+        maxProbesPerStep: { type: "integer", default: 6 },
+        probeDryRun: { type: "boolean", default: true },
+        probeConfirm: { type: "string", description: "Required as EXECUTE_NO_MOUSE_PROBES when probeDryRun is false." },
+        candidateIndex: { type: "integer", default: 0 },
+        waitAfterAdvanceMs: { type: "integer", default: 500 },
+        recordEvidence: { type: "boolean", default: true },
+        stopAfterDryRunPlan: { type: "boolean", default: true },
+        includePlan: { type: "boolean", default: true },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_no_mouse_watch_evidence",
     description: "Watch for no-mouse evidence opportunities over time, automatically collecting ready probes when missing operation types become exposed.",
     inputSchema: {
@@ -1377,6 +1401,9 @@ async function handleRequest(request) {
     if (toolName === "witch_no_mouse_evidence_drive") {
       return toolResult(id, await driveNoMouseEvidence(args));
     }
+    if (toolName === "witch_no_mouse_state_advance_drive") {
+      return toolResult(id, await driveNoMouseStateAdvance(args));
+    }
     if (toolName === "witch_no_mouse_watch_evidence") {
       return toolResult(id, await watchNoMouseEvidence(args));
     }
@@ -2015,6 +2042,7 @@ function localCapabilities() {
         "witch_no_mouse_coverage",
         "witch_no_mouse_record_evidence",
         "witch_no_mouse_completion_audit",
+        "witch_no_mouse_state_advance_drive",
         "witch_battle_snapshot",
         "witch_ui_interact",
         "witch_ui_click_label",
@@ -2048,6 +2076,7 @@ function localCapabilities() {
       "Use witch_no_mouse_coverage to prove the running game has the required no-mouse runtime services and current control-map evidence.",
       "Use witch_no_mouse_record_evidence while moving through different game states; strict completion audit can combine these samples across time.",
       "Use witch_no_mouse_completion_audit before claiming full takeover: it requires per-family evidence and reports complete=false when a game state has not been witnessed yet.",
+      "Use witch_no_mouse_state_advance_drive to review and optionally execute ranked no-mouse state-advance candidates between evidence collection cycles; real state changes require confirm:\"ADVANCE_NO_MOUSE_STATE\".",
       "Use witch_input_key and witch_input_text only as fallback controls when typed game/UI/scene automation is insufficient. witch_input_mouse is refused unless noMouse is explicitly disabled.",
       "Use witch_runtime_inspect to discover loaded game automation/debug surfaces when typed tools do not cover a needed operation.",
       "Use witch_runtime_objects to inspect Unity GameObjects/components when UI, scene, or legal-action snapshots do not expose enough context.",
@@ -5045,6 +5074,203 @@ async function watchNoMouseEvidence(args) {
   };
 }
 
+async function driveNoMouseStateAdvance(args) {
+  const dryRun = args?.dryRun !== false;
+  if (!dryRun && args?.confirm !== "ADVANCE_NO_MOUSE_STATE") {
+    return {
+      ok: false,
+      dryRun,
+      reason: "state_advance_confirmation_required",
+      nextStep: "Pass confirm:\"ADVANCE_NO_MOUSE_STATE\" only after reviewing stateAdvanceCandidates; this may change in-game state."
+    };
+  }
+
+  const probeDryRun = args?.probeDryRun !== false;
+  if (!probeDryRun && args?.probeConfirm !== "EXECUTE_NO_MOUSE_PROBES") {
+    return {
+      ok: false,
+      dryRun,
+      probeDryRun,
+      reason: "probe_execution_confirmation_required",
+      nextStep: "Pass probeConfirm:\"EXECUTE_NO_MOUSE_PROBES\" only after reviewing the selected no-mouse probes."
+    };
+  }
+
+  const maxSteps = Math.max(1, Math.min(20, Number(args?.maxSteps ?? 3)));
+  const maxProbesPerStep = Math.max(0, Math.min(50, Number(args?.maxProbesPerStep ?? 6)));
+  const waitAfterAdvanceMs = Math.max(0, Math.min(10000, Number(args?.waitAfterAdvanceMs ?? 500)));
+  const requestedCandidateIndex = Math.max(0, Math.min(50, Number(args?.candidateIndex ?? 0)));
+  const steps = [];
+  const attemptedOperationIds = new Set();
+  let finalAudit = await noMouseCompletionAudit({
+    includePolicyTests: true,
+    includeCurrentState: true,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+
+  if (finalAudit.complete === true) {
+    return {
+      ok: true,
+      complete: true,
+      dryRun,
+      probeDryRun,
+      stopped: true,
+      reason: "already_complete",
+      steps,
+      finalAudit,
+      finalPlan: args?.includePlan === false ? null : await noMouseEvidencePlan({
+        includePolicyTests: true,
+        includeCurrentState: true,
+        includeHidden: !!args?.includeHidden,
+        onlyInteractive: args?.onlyInteractive !== false
+      })
+    };
+  }
+
+  for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
+    const plan = await noMouseEvidencePlan({
+      includePolicyTests: true,
+      includeCurrentState: true,
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+    let collection = null;
+    if (args?.collectReadyBeforeAdvance !== false && (plan.readyProbeCount || 0) > 0) {
+      collection = await collectReadyNoMouseEvidence({
+        dryRun: probeDryRun,
+        confirm: args?.probeConfirm,
+        onlyMissing: true,
+        maxProbes: maxProbesPerStep,
+        recordEvidence: true,
+        recordStateSample: true,
+        includePlan: false,
+        includeControlMap: false,
+        includePostAudit: true,
+        includeHidden: !!args?.includeHidden,
+        onlyInteractive: args?.onlyInteractive !== false
+      });
+      finalAudit = collection.postAudit || finalAudit;
+      if (finalAudit?.complete === true) {
+        steps.push({
+          index: stepIndex,
+          plan: args?.includePlan === false ? undefined : plan,
+          collection,
+          advance: null,
+          completeAfterStep: true
+        });
+        return { ok: true, complete: true, dryRun, probeDryRun, stopped: true, reason: "complete", steps, finalAudit };
+      }
+    }
+
+    const candidates = (plan.stateAdvanceCandidates || [])
+      .filter(candidate => candidate?.operation?.id && !attemptedOperationIds.has(candidate.operation.id));
+    const selectedCandidate = candidates[Math.min(requestedCandidateIndex, Math.max(0, candidates.length - 1))] || null;
+    if (!selectedCandidate) {
+      steps.push({
+        index: stepIndex,
+        plan: args?.includePlan === false ? undefined : plan,
+        collection,
+        advance: null,
+        completeAfterStep: false
+      });
+      return {
+        ok: true,
+        complete: false,
+        dryRun,
+        probeDryRun,
+        stopped: true,
+        reason: "no_state_advance_candidate",
+        nextStep: "Enter or expose a state-advanceable no-mouse operation, or restart the game if bridge DLL readiness is the remaining blocker.",
+        steps,
+        finalAudit,
+        finalPlan: args?.includePlan === false ? null : plan
+      };
+    }
+
+    attemptedOperationIds.add(selectedCandidate.operation.id);
+    const advance = await executeOperation({
+      operationId: selectedCandidate.operation.id,
+      dryRun,
+      includePostSummary: true,
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+
+    if (waitAfterAdvanceMs > 0 && !dryRun) {
+      await new Promise(resolve => setTimeout(resolve, waitAfterAdvanceMs));
+    }
+
+    const stateSample = args?.recordEvidence === false
+      ? null
+      : await recordNoMouseEvidence({
+        note: dryRun
+          ? "dry-run no-mouse state advance candidate"
+          : "post no-mouse state advance sample",
+        includePolicyTests: false,
+        includeHidden: !!args?.includeHidden,
+        onlyInteractive: args?.onlyInteractive !== false
+      });
+    finalAudit = await noMouseCompletionAudit({
+      includePolicyTests: true,
+      includeCurrentState: true,
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+
+    steps.push({
+      index: stepIndex,
+      plan: args?.includePlan === false ? undefined : plan,
+      collection,
+      selectedCandidate,
+      advance,
+      stateSample,
+      completeAfterStep: finalAudit.complete === true
+    });
+
+    if (finalAudit.complete === true) {
+      return { ok: true, complete: true, dryRun, probeDryRun, stopped: true, reason: "complete", steps, finalAudit };
+    }
+
+    if (dryRun && args?.stopAfterDryRunPlan !== false) {
+      return {
+        ok: true,
+        complete: false,
+        dryRun,
+        probeDryRun,
+        stopped: true,
+        reason: "dry_run_planned",
+        nextStep: "Review steps[0].selectedCandidate and rerun with dryRun:false plus confirm:\"ADVANCE_NO_MOUSE_STATE\" when this state change is acceptable.",
+        steps,
+        finalAudit,
+        finalPlan: args?.includePlan === false ? null : await noMouseEvidencePlan({
+          includePolicyTests: true,
+          includeCurrentState: true,
+          includeHidden: !!args?.includeHidden,
+          onlyInteractive: args?.onlyInteractive !== false
+        })
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    complete: finalAudit?.complete === true,
+    dryRun,
+    probeDryRun,
+    stopped: true,
+    reason: "max_steps",
+    steps,
+    finalAudit,
+    finalPlan: args?.includePlan === false ? null : await noMouseEvidencePlan({
+      includePolicyTests: true,
+      includeCurrentState: true,
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    })
+  };
+}
+
 async function collectReadyNoMouseCandidatesFromControlMap(args) {
   const controlMap = await collectControlMap({
     includeHidden: !!args?.includeHidden,
@@ -5919,6 +6145,8 @@ async function executeBatchStep(step, options) {
       return collectReadyNoMouseEvidence({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_no_mouse_evidence_drive":
       return driveNoMouseEvidence({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
+    case "witch_no_mouse_state_advance_drive":
+      return driveNoMouseStateAdvance({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_no_mouse_watch_evidence":
       return watchNoMouseEvidence({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_status":
