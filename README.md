@@ -1,5 +1,7 @@
 # 魔女终末旅途 MCP
 
+[![test](https://github.com/Inque-Loic/witch-journey-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/Inque-Loic/witch-journey-mcp/actions/workflows/test.yml)
+
 这是一个用于 *魔女终末旅途* 的本地 MCP 工具包，让支持 MCP 的客户端可以通过游戏内自动化接口接管游戏操作，而不是盲猜屏幕点击。
 
 它不是 Codex 专用工具。`server.mjs` 是标准 MCP stdio server，理论上可以被 Codex、Claude Desktop、Claude Code、Cursor、Windsurf 或你自己写的 MCP client 启动和调用。Codex 只是当前仓库已经验证过的接入方式之一。
