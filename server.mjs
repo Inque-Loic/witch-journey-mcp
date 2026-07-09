@@ -294,6 +294,33 @@ const tools = [
     }
   },
   {
+    name: "witch_execute_operation",
+    description: "Find one current no-mouse operation from witch_control_map by id, family/action, label, or index, then optionally execute its mapped MCP call.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operationId: { type: "string" },
+        family: { type: "string" },
+        action: { type: "string" },
+        label: { type: "string" },
+        index: { type: "integer" },
+        contains: { type: "boolean", default: true },
+        dryRun: { type: "boolean", default: true },
+        arguments: { type: "object", additionalProperties: true },
+        allowIncomplete: { type: "boolean", default: false },
+        includeControlMap: { type: "boolean", default: false },
+        includePostSummary: { type: "boolean", default: false },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        includeActions: { type: "boolean", default: true },
+        includeUi: { type: "boolean", default: true },
+        includeScene: { type: "boolean", default: true },
+        includeBattle: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_state_summary",
     description: "Capture a compact decision-oriented summary of the current game state: windows, clickable UI, scene interactables, legal actions, and a suggested next legal action.",
     inputSchema: {
@@ -1221,6 +1248,9 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_control_map") {
       return toolResult(id, await collectControlMap(args));
+    }
+    if (toolName === "witch_execute_operation") {
+      return toolResult(id, await executeOperation(args));
     }
     if (toolName === "witch_battle_snapshot") {
       return toolResult(id, await collectBattleSnapshot(args));
@@ -3790,7 +3820,7 @@ async function collectBattleSnapshotFromRuntime(args) {
     targetCount: targets.length,
     cards,
     targets,
-    supportedActions: ["play_card"],
+    supportedActions: targets.length > 0 ? ["play_card", "play_card_target"] : ["play_card"],
     runtimeQueries: { cards: cardObjects, statusTargets, enemyTargets }
   };
 }
@@ -3963,6 +3993,131 @@ async function collectControlMap(args) {
       battleTargetCount: Number((snapshot.battle?.data || snapshot.battle)?.targetCount || 0)
     }
   };
+}
+
+async function executeOperation(args) {
+  const controlMap = await collectControlMap({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    includeActions: args?.includeActions !== false,
+    includeUi: args?.includeUi !== false,
+    includeScene: args?.includeScene !== false,
+    includeBattle: args?.includeBattle !== false,
+    includeUnsupported: true,
+    maxActions: 200,
+    maxUiNodes: 200,
+    maxSceneObjects: 200
+  });
+
+  if (!controlMap.ok) {
+    return { ok: false, dryRun: args?.dryRun !== false, reason: "control_map_unavailable", controlMap };
+  }
+
+  const selected = selectOperation(controlMap.operations || [], args || {});
+  if (!selected) {
+    return {
+      ok: false,
+      dryRun: args?.dryRun !== false,
+      reason: "no_matching_operation",
+      selector: operationSelectorSummary(args || {}),
+      available: summarizeAvailableOperations(controlMap.operations || []),
+      controlMap: args?.includeControlMap ? controlMap : undefined
+    };
+  }
+
+  if (selected.noMouse !== true || selected.call?.tool === "witch_input_mouse") {
+    return {
+      ok: false,
+      dryRun: args?.dryRun !== false,
+      reason: "operation_is_not_no_mouse",
+      selected,
+      controlMap: args?.includeControlMap ? controlMap : undefined
+    };
+  }
+
+  if (selected.ready === false && args?.allowIncomplete !== true && args?.arguments == null) {
+    return {
+      ok: false,
+      dryRun: args?.dryRun !== false,
+      reason: "operation_requires_arguments",
+      selected,
+      required: selected.requiresArguments || [],
+      controlMap: args?.includeControlMap ? controlMap : undefined
+    };
+  }
+
+  const plannedCall = {
+    tool: selected.call.tool,
+    arguments: { ...(selected.call.arguments || {}), ...(args?.arguments || {}) }
+  };
+  const dryRun = args?.dryRun !== false;
+  const response = {
+    ok: true,
+    dryRun,
+    selected,
+    plannedCall,
+    controlMap: args?.includeControlMap ? controlMap : undefined
+  };
+
+  if (dryRun) {
+    response.result = { ok: true, skipped: true, plannedTool: plannedCall.tool, arguments: plannedCall.arguments };
+    return response;
+  }
+
+  response.result = await executeRecommendedCall(plannedCall, { forceDryRun: false });
+  response.ok = response.result?.ok !== false;
+  if (args?.includePostSummary) {
+    response.postSummary = await collectStateSummary({
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+  }
+  return response;
+}
+
+function selectOperation(operations, selector) {
+  let candidates = operations.slice();
+  if (selector.operationId) {
+    candidates = candidates.filter(operation => operation.id === selector.operationId);
+  }
+  if (selector.family) {
+    candidates = candidates.filter(operation => matchesText(operation.family, selector.family, false));
+  }
+  if (selector.action) {
+    candidates = candidates.filter(operation => normalizeActionName(operation.action) === normalizeActionName(selector.action));
+  }
+  if (selector.label) {
+    const contains = selector.contains !== false;
+    candidates = candidates.filter(operation => matchesText(operation.label, selector.label, contains));
+  }
+  if (Number.isInteger(selector.index)) {
+    return candidates[selector.index] || null;
+  }
+  return candidates[0] || null;
+}
+
+function operationSelectorSummary(selector) {
+  return {
+    operationId: selector.operationId || null,
+    family: selector.family || null,
+    action: selector.action || null,
+    label: selector.label || null,
+    index: Number.isInteger(selector.index) ? selector.index : null,
+    contains: selector.contains !== false
+  };
+}
+
+function summarizeAvailableOperations(operations) {
+  return operations.slice(0, 30).map((operation, index) => ({
+    index,
+    id: operation.id,
+    family: operation.family,
+    action: operation.action,
+    label: operation.label,
+    ready: operation.ready,
+    noMouse: operation.noMouse,
+    requiresArguments: operation.requiresArguments || []
+  }));
 }
 
 async function collectStateSummary(args) {
@@ -4590,6 +4745,11 @@ async function executeRecommendedCall(call, options) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
       }
       return callBridge("scene.interact", args);
+    case "witch_play_card":
+      if (options?.forceDryRun) {
+        return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
+      }
+      return callBridge("battle.play_card", args);
     case "witch_input_key":
       if (options?.forceDryRun) {
         return { ok: true, skipped: true, plannedTool: call.tool, arguments: args };
@@ -4710,6 +4870,8 @@ async function executeBatchStep(step, options) {
       return collectGameSnapshot(args);
     case "witch_control_map":
       return collectControlMap(args);
+    case "witch_execute_operation":
+      return executeOperation({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_battle_snapshot":
       return collectBattleSnapshot(args);
     case "witch_state_summary":
@@ -4752,6 +4914,7 @@ async function executeBatchStep(step, options) {
     case "witch_ui_click_label":
     case "witch_ui_interact":
     case "witch_scene_interact":
+    case "witch_play_card":
     case "witch_input_key":
     case "witch_input_text":
     case "witch_input_mouse":

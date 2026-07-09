@@ -2017,7 +2017,7 @@ namespace CodexMcpBridge
                 targetCount = targets.Count,
                 cards,
                 targets,
-                supportedActions = new[] { "play_card" }
+                supportedActions = targets.Count > 0 ? new[] { "play_card", "play_card_target" } : new[] { "play_card" }
             };
         }
 

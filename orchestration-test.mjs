@@ -479,8 +479,9 @@ send(45, "tools/call", { name: "witch_control_map", arguments: { includeHidden: 
 send(46, "tools/call", { name: "witch_no_mouse_coverage", arguments: { includeCurrentState: true, includePolicyTests: true } });
 send(47, "tools/call", { name: "witch_no_mouse_record_evidence", arguments: { reset: true, note: "orchestration-test" } });
 send(48, "tools/call", { name: "witch_no_mouse_completion_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
+send(49, "tools/call", { name: "witch_execute_operation", arguments: { family: "battle", action: "play_card_target", dryRun: true } });
 
-for (let id = 2; id <= 48; id++) {
+for (let id = 2; id <= 49; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -543,6 +544,7 @@ const controlMap = textResult(45);
 const noMouseCoverage = textResult(46);
 const noMouseEvidence = textResult(47);
 const noMouseCompletionAudit = textResult(48);
+const executeOperation = textResult(49);
 
 if (!capabilities.ok || capabilities.tools.length < 51 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
@@ -606,6 +608,9 @@ if (!noMouseEvidence.ok || noMouseEvidence.summary?.sampleCount < 1 || noMouseEv
 }
 if (!noMouseCompletionAudit.complete || noMouseCompletionAudit.requirements?.some(item => item.status !== "proved")) {
   throw new Error(`bad no-mouse completion audit ${JSON.stringify(noMouseCompletionAudit, null, 2)}`);
+}
+if (!executeOperation.ok || executeOperation.dryRun !== true || executeOperation.selected?.family !== "battle" || executeOperation.selected?.action !== "play_card_target" || executeOperation.plannedCall?.tool !== "witch_play_card" || executeOperation.result?.skipped !== true) {
+  throw new Error(`bad execute operation ${JSON.stringify(executeOperation, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);

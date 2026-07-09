@@ -5,18 +5,48 @@ $root = if ([string]::IsNullOrWhiteSpace($env:WITCH_JOURNEY_GAME_ROOT)) {
 } else {
   Resolve-Path $env:WITCH_JOURNEY_GAME_ROOT
 }
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $managed = Join-Path $root "Witch's Apocalyptic Journey_Data\Managed"
-$source = Join-Path $root "Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge\Dev\Entry.cs"
+$repoSource = Join-Path $repoRoot "bridge-mod\Dev\Entry.cs"
+$installedSource = Join-Path $root "Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge\Dev\Entry.cs"
+$source = if (Test-Path $repoSource) { $repoSource } else { $installedSource }
 $outDir = Join-Path $root "Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge\Scripts"
 $outDll = Join-Path $outDir "Entry.dll"
 $buildDir = Join-Path $PSScriptRoot "..\build"
 $buildDll = Join-Path $buildDir "CodexMcpBridge.Codex.dll"
+$repoOutDir = Join-Path $repoRoot "bridge-mod\Scripts"
+$repoDll = Join-Path $repoOutDir "Entry.dll"
 $mirrorOutDir = Join-Path $root "Mods\CodexMcpBridge\Scripts"
 $mirrorDll = Join-Path $mirrorOutDir "Entry.dll"
+$mirrorDevDir = Join-Path $root "Mods\CodexMcpBridge\Dev"
+$mirrorSource = Join-Path $mirrorDevDir "Entry.cs"
+$installedDevDir = Join-Path $root "Witch's Apocalyptic Journey_Data\Mods\CodexMcpBridge\Dev"
 
 New-Item -ItemType Directory -Force $outDir | Out-Null
 New-Item -ItemType Directory -Force $buildDir | Out-Null
+New-Item -ItemType Directory -Force $repoOutDir | Out-Null
 New-Item -ItemType Directory -Force $mirrorOutDir | Out-Null
+New-Item -ItemType Directory -Force $mirrorDevDir | Out-Null
+New-Item -ItemType Directory -Force $installedDevDir | Out-Null
+
+function Copy-BridgeArtifact {
+  param(
+    [Parameter(Mandatory = $true)][string]$From,
+    [Parameter(Mandatory = $true)][string]$To,
+    [switch]$Optional
+  )
+
+  try {
+    Copy-Item -LiteralPath $From -Destination $To -Force
+    return $true
+  } catch {
+    if ($Optional) {
+      Write-Warning ("Could not update " + $To + ": " + $_.Exception.Message)
+      return $false
+    }
+    throw
+  }
+}
 
 $refs = @(
   "mscorlib.dll",
@@ -52,11 +82,14 @@ if ($candidateCsc) {
     throw "csc failed with exit code $LASTEXITCODE"
   }
 
-  Copy-Item -LiteralPath $buildDll -Destination $outDll -Force
-  Copy-Item -LiteralPath $outDll -Destination $mirrorDll -Force
-  Copy-Item -LiteralPath $source -Destination (Join-Path $root "Mods\CodexMcpBridge\Dev\Entry.cs") -Force
-  Write-Host "Built $outDll"
-  Write-Host "Mirrored $mirrorDll"
+  $repoUpdated = Copy-BridgeArtifact -From $buildDll -To $repoDll
+  $mirrorUpdated = Copy-BridgeArtifact -From $buildDll -To $mirrorDll -Optional
+  Copy-BridgeArtifact -From $source -To $mirrorSource -Optional | Out-Null
+  $installedUpdated = Copy-BridgeArtifact -From $buildDll -To $outDll -Optional
+  Copy-BridgeArtifact -From $source -To $installedSource -Optional | Out-Null
+  Write-Host ("Built repo DLL " + $repoDll + " [" + ($(if ($repoUpdated) { "updated" } else { "failed" })) + "]")
+  Write-Host ("Mirrored DLL " + $mirrorDll + " [" + ($(if ($mirrorUpdated) { "updated" } else { "locked-or-skipped" })) + "]")
+  Write-Host ("Installed Data DLL " + $outDll + " [" + ($(if ($installedUpdated) { "updated" } else { "locked-or-skipped" })) + "]")
   exit 0
 }
 
@@ -121,9 +154,12 @@ if (-not $result.Success) {
   throw "Compilation failed"
 }
 
-Copy-Item -LiteralPath $buildDll -Destination $outDll -Force
-Copy-Item -LiteralPath $outDll -Destination $mirrorDll -Force
-Copy-Item -LiteralPath $source -Destination (Join-Path $root "Mods\CodexMcpBridge\Dev\Entry.cs") -Force
+$repoUpdated = Copy-BridgeArtifact -From $buildDll -To $repoDll
+$mirrorUpdated = Copy-BridgeArtifact -From $buildDll -To $mirrorDll -Optional
+Copy-BridgeArtifact -From $source -To $mirrorSource -Optional | Out-Null
+$installedUpdated = Copy-BridgeArtifact -From $buildDll -To $outDll -Optional
+Copy-BridgeArtifact -From $source -To $installedSource -Optional | Out-Null
 
-Write-Host "Built $outDll"
-Write-Host "Mirrored $mirrorDll"
+Write-Host ("Built repo DLL " + $repoDll + " [" + ($(if ($repoUpdated) { "updated" } else { "failed" })) + "]")
+Write-Host ("Mirrored DLL " + $mirrorDll + " [" + ($(if ($mirrorUpdated) { "updated" } else { "locked-or-skipped" })) + "]")
+Write-Host ("Installed Data DLL " + $outDll + " [" + ($(if ($installedUpdated) { "updated" } else { "locked-or-skipped" })) + "]")
