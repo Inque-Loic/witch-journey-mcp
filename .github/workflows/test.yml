@@ -31,6 +31,7 @@ jobs:
           node --check .\state-advance-policy-test.mjs
           node --check .\bridge-sync-test.mjs
           node --check .\verify-end-to-end-fake.mjs
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\verify-script-syntax.ps1
 
       - name: Run tests
         run: npm test
