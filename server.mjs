@@ -1918,6 +1918,7 @@ async function collectNoMouseEvidenceSample(args) {
     : await collectBattleSnapshotFromRuntime({ maxCards: 20, maxTargets: 20 });
   const current = coverage.currentState || {};
   const byFamily = current.controlMap?.byFamily || {};
+  const actionTypesByFamily = current.controlMap?.actionTypesByFamily || actionTypesFromControlMap(current.controlMap);
   const dataRoot = diagnostics.modFiles?.find(item => containsText(item.root, "Witch's Apocalyptic Journey_Data"));
   const fakeBridge = diagnostics.bridgeStatus?.data?.bridge === "fake";
   const dataRootWithMarkers = !!dataRoot?.dll?.exists && BRIDGE_MARKERS.every(marker => dataRoot.dllMarkers?.[marker] === true);
@@ -1940,7 +1941,8 @@ async function collectNoMouseEvidenceSample(args) {
       operationCount: Number(current.controlMap?.operationCount || 0),
       readyOperationCount: Number(current.controlMap?.readyOperationCount || 0),
       unmappedCount: Number(current.controlMap?.unmappedCount || 0),
-      byFamily
+      byFamily,
+      actionTypesByFamily
     },
     families: {
       ui: {
@@ -2019,6 +2021,7 @@ function mergeNoMouseEvidence(log, sample) {
       };
     }
   }
+  merged.operationTypes = mergeOperationTypeEvidence(log.operationTypes || {}, sample);
   if (sample.bridge?.nativeBattleSnapshotActive) {
     merged.bridge.nativeBattleSnapshotActive = {
       observed: true,
@@ -2032,6 +2035,24 @@ function mergeNoMouseEvidence(log, sample) {
       provedAtUtc: sample.capturedAtUtc,
       evidence: sample.bridge
     };
+  }
+  return merged;
+}
+
+function mergeOperationTypeEvidence(existing, sample) {
+  const merged = { ...(existing || {}) };
+  const actionTypesByFamily = sample.state?.actionTypesByFamily || {};
+  for (const familyName of Object.keys(actionTypesByFamily)) {
+    merged[familyName] = { ...(merged[familyName] || {}) };
+    for (const action of actionTypesByFamily[familyName]) {
+      merged[familyName][action] = {
+        observed: true,
+        provedAtUtc: sample.capturedAtUtc,
+        bridge: sample.bridge,
+        state: sample.state,
+        note: sample.note || ""
+      };
+    }
   }
   return merged;
 }
@@ -2052,7 +2073,8 @@ function summarizeNoMouseEvidenceLog(log) {
     bridge: {
       nativeBattleSnapshotActive: evidenceFamilySummary(bridge.nativeBattleSnapshotActive),
       updatedDataBridgeReady: evidenceFamilySummary(bridge.updatedDataBridgeReady)
-    }
+    },
+    operationTypes: summarizeOperationTypeEvidence(log?.operationTypes || {})
   };
 }
 
@@ -2060,6 +2082,36 @@ function evidenceFamilySummary(item) {
   return item?.observed
     ? { observed: true, provedAtUtc: item.provedAtUtc, evidence: item.evidence, bridge: item.bridge || item.evidence || null }
     : { observed: false };
+}
+
+function actionTypesFromControlMap(controlMap) {
+  const byFamily = {};
+  const operations = Array.isArray(controlMap?.operations) ? controlMap.operations : [];
+  for (const operation of operations) {
+    const family = operation?.family || "unknown";
+    const action = operation?.action || "unknown";
+    if (!byFamily[family]) byFamily[family] = new Set();
+    byFamily[family].add(action);
+  }
+  const result = {};
+  for (const family of Object.keys(byFamily)) {
+    result[family] = Array.from(byFamily[family]).sort();
+  }
+  return result;
+}
+
+function summarizeOperationTypeEvidence(operationTypes) {
+  const summary = {};
+  for (const familyName of Object.keys(operationTypes || {})) {
+    summary[familyName] = {};
+    for (const action of Object.keys(operationTypes[familyName] || {})) {
+      const item = operationTypes[familyName][action];
+      summary[familyName][action] = item?.observed
+        ? { observed: true, provedAtUtc: item.provedAtUtc, bridge: item.bridge || null }
+        : { observed: false };
+    }
+  }
+  return summary;
 }
 
 async function noMouseCompletionAudit(args) {
@@ -2089,6 +2141,7 @@ async function noMouseCompletionAudit(args) {
   const evidenceSummary = evidenceLog ? summarizeNoMouseEvidenceLog(evidenceLog) : null;
   const dataRoot = diagnostics.modFiles?.find(item => containsText(item.root, "Witch's Apocalyptic Journey_Data"));
   const fakeBridge = diagnostics.bridgeStatus?.data?.bridge === "fake";
+  const operationTypeEvidence = operationTypeCompletionEvidence(current.controlMap?.actionTypesByFamily || {}, evidenceLog, { allowFake: fakeBridge });
   const anyRootWithMarkers = diagnostics.modFiles?.some(root => root.dll?.exists && BRIDGE_MARKERS.every(marker => root.dllMarkers?.[marker] === true)) === true;
   const dataRootWithMarkers = !!dataRoot?.dll?.exists && BRIDGE_MARKERS.every(marker => dataRoot.dllMarkers?.[marker] === true);
 
@@ -2194,6 +2247,14 @@ async function noMouseCompletionAudit(args) {
     },
     nextAction: battleSnapshot?.inBattle === true || evidenceObserved(evidenceLog, "families", "battle", { allowFake: fakeBridge }) ? null : "进入一场战斗，再调用 witch_no_mouse_record_evidence 记录手牌/目标，并验证 witch_play_card 参数路径。"
   });
+  addCompletionRequirement(requirements, {
+    name: "operation_type_samples_observed",
+    status: operationTypeEvidence.missingRequired.length === 0 ? "proved" : "missing",
+    evidence: operationTypeEvidence,
+    nextAction: operationTypeEvidence.missingRequired.length === 0
+      ? null
+      : "继续进入对应 UI/场景/战斗状态并调用 witch_no_mouse_record_evidence，直到缺失操作类型都有真实样本。"
+  });
 
   const missing = requirements.filter(item => item.status !== "proved");
   return {
@@ -2244,6 +2305,49 @@ function evidenceObserved(log, group, key, options = {}) {
   if (options.allowFake === true) return true;
   const bridge = item.bridge || item.evidence || {};
   return bridge.fakeBridge !== true;
+}
+
+function operationTypeCompletionEvidence(currentTypes, log, options = {}) {
+  const required = {
+    legal_action: ["perform"],
+    ui: ["click", "submit", "scroll", "drag", "hover"],
+    scene: ["click", "hover", "drag", "scroll"],
+    battle: ["play_card", "play_card_target"]
+  };
+  const observed = {};
+  for (const family of Object.keys(currentTypes || {})) {
+    observed[family] = new Set(currentTypes[family] || []);
+  }
+  const logged = log?.operationTypes || {};
+  for (const family of Object.keys(logged)) {
+    if (!observed[family]) observed[family] = new Set();
+    for (const action of Object.keys(logged[family] || {})) {
+      const item = logged[family][action];
+      if (item?.observed !== true) continue;
+      if (options.allowFake !== true && item.bridge?.fakeBridge === true) continue;
+      observed[family].add(action);
+    }
+  }
+  const observedLists = {};
+  for (const family of Object.keys(observed)) {
+    observedLists[family] = Array.from(observed[family]).sort();
+  }
+  if (observed.legal_action && observed.legal_action.size > 0) {
+    observed.legal_action.add("perform");
+    observedLists.legal_action = Array.from(observed.legal_action).sort();
+  }
+  const missingRequired = [];
+  for (const family of Object.keys(required)) {
+    const familyObserved = observed[family] || new Set();
+    for (const action of required[family]) {
+      if (!familyObserved.has(action)) missingRequired.push({ family, action });
+    }
+  }
+  return {
+    required,
+    observed: observedLists,
+    missingRequired
+  };
 }
 
 async function inspectNoMouseRuntimeServices() {
@@ -2504,7 +2608,8 @@ async function collectNoMouseCurrentState(args) {
       operationCount: controlMap.operationCount,
       readyOperationCount: controlMap.readyOperationCount,
       unmappedCount: controlMap.unmappedCount,
-      byFamily: controlMap.byFamily
+      byFamily: controlMap.byFamily,
+      actionTypesByFamily: actionTypesFromControlMap(controlMap)
     } : controlMap
   };
 }

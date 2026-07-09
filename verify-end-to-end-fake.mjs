@@ -81,7 +81,7 @@ function commandResult(command, params) {
           LayoutSignature: "layout-test",
           Windows: [{ WindowName: "MainMenu", NodeId: "window-main", Visible: true, ActiveInHierarchy: true }],
           Nodes: [
-            { NodeId: "start", Label: "start journey", WindowName: "MainMenu", Clickable: true, SupportedActions: ["click"] },
+            { NodeId: "start", Label: "start journey", WindowName: "MainMenu", Clickable: true, SupportedActions: ["click", "submit", "scroll", "drag", "hover"] },
             { NodeId: "title", Label: "title", WindowName: "MainMenu", Clickable: false }
           ]
         }
@@ -112,7 +112,7 @@ function commandResult(command, params) {
               HasPointerHandler: true,
               Interactive: true,
               ComponentTypes: ["SceneItem"],
-              SupportedActions: ["click"],
+              SupportedActions: ["click", "hover", "drag", "scroll"],
               ScreenPoint: { X: 10, Y: 20 },
               ScreenRect: { X: 1, Y: 2, Width: 30, Height: 40 }
             }

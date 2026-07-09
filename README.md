@@ -99,7 +99,7 @@ MCP 默认不使用 OS 鼠标。也就是说：
 
 如果确实要临时恢复 OS 鼠标兜底，可以设置环境变量 `WITCH_JOURNEY_NO_MOUSE=0`，或单次调用 `witch_input_mouse` 时传 `noMouse:false`。不建议把它作为自动接管路径。
 
-`witch_no_mouse_coverage` 用来确认能力是否齐全；`witch_no_mouse_record_evidence` 用来在不同游戏状态下记录紧凑证据；`witch_no_mouse_completion_audit` 更严格，用来判断是否已经足以宣布“完全无鼠标接管”目标完成。它会要求 UI、场景、战斗、合法动作等操作族都有现场证据；证据不足时会返回 `complete:false` 和下一步建议，而不是把单一界面的成功误报为全局完成。
+`witch_no_mouse_coverage` 用来确认能力是否齐全；`witch_no_mouse_record_evidence` 用来在不同游戏状态下记录紧凑证据，包括操作族和 action 类型摘要；`witch_no_mouse_completion_audit` 更严格，用来判断是否已经足以宣布“完全无鼠标接管”目标完成。它会要求 UI、场景、战斗、合法动作等操作族都有现场证据；证据不足时会返回 `complete:false` 和下一步建议，而不是把单一界面的成功误报为全局完成。
 
 证据日志默认写入仓库本地的 `.witch-no-mouse-evidence.json`，该文件已被 `.gitignore` 排除，不会上传到公开仓库。
 
