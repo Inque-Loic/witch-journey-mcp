@@ -159,7 +159,13 @@ const tools = [
         includeScreenshot: { type: "boolean", default: false },
         includePlan: { type: "boolean", default: true },
         includeHidden: { type: "boolean", default: false },
-        onlyInteractive: { type: "boolean", default: true }
+        onlyInteractive: { type: "boolean", default: true },
+        allowOperationIds: { type: "array", items: { type: "string" } },
+        denyOperationIds: { type: "array", items: { type: "string" } },
+        allowLabels: { type: "array", items: { type: "string" } },
+        denyLabels: { type: "array", items: { type: "string" } },
+        allowPaths: { type: "array", items: { type: "string" } },
+        denyPaths: { type: "array", items: { type: "string" } }
       },
       additionalProperties: false
     }
@@ -3042,6 +3048,29 @@ function isLowIntentStateAdvanceOperation(operation) {
   return false;
 }
 
+function evaluateStateAdvancePolicy(operation, policy) {
+  const id = String(operation?.id || "");
+  const label = String(operation?.label || "");
+  const selector = operation?.call?.arguments?.selector || {};
+  const pathText = String(selector.transformPath || operation?.target?.transformPath || "");
+  const deniedBy = [];
+  const missingAllow = [];
+
+  if (matchesAny(id, policy.denyOperationIds, false)) deniedBy.push("denyOperationIds");
+  if (matchesAny(label, policy.denyLabels, true)) deniedBy.push("denyLabels");
+  if (matchesAny(pathText, policy.denyPaths, true)) deniedBy.push("denyPaths");
+  if (Array.isArray(policy.allowOperationIds) && policy.allowOperationIds.length > 0 && !matchesAny(id, policy.allowOperationIds, false)) missingAllow.push("allowOperationIds");
+  if (Array.isArray(policy.allowLabels) && policy.allowLabels.length > 0 && !matchesAny(label, policy.allowLabels, true)) missingAllow.push("allowLabels");
+  if (Array.isArray(policy.allowPaths) && policy.allowPaths.length > 0 && !matchesAny(pathText, policy.allowPaths, true)) missingAllow.push("allowPaths");
+
+  return {
+    ok: deniedBy.length === 0 && missingAllow.length === 0,
+    deniedBy,
+    missingAllow,
+    inspected: { id, label, path: pathText }
+  };
+}
+
 function stateAdvanceScore(operation, missingFamilies) {
   let score = 0;
   const family = operation?.family || "";
@@ -5383,8 +5412,21 @@ async function driveNoMouseStateAdvance(args) {
       }
     }
 
-    const candidates = (plan.stateAdvanceCandidates || [])
+    const rawCandidates = (plan.stateAdvanceCandidates || [])
       .filter(candidate => candidate?.operation?.id && !attemptedOperationIds.has(candidate.operation.id));
+    const policyResults = rawCandidates.map(candidate => ({
+      candidate,
+      policy: evaluateStateAdvancePolicy(candidate.operation, args || {})
+    }));
+    const candidates = policyResults
+      .filter(item => item.policy.ok)
+      .map(item => item.candidate);
+    const blockedCandidates = policyResults
+      .filter(item => !item.policy.ok)
+      .map(item => ({
+        operation: item.candidate.operation,
+        policy: item.policy
+      }));
     const selectedCandidate = candidates[Math.min(requestedCandidateIndex, Math.max(0, candidates.length - 1))] || null;
     if (!selectedCandidate) {
       steps.push({
@@ -5392,6 +5434,7 @@ async function driveNoMouseStateAdvance(args) {
         plan: args?.includePlan === false ? undefined : plan,
         collection,
         advance: null,
+        blockedCandidates,
         completeAfterStep: false
       });
       return {
@@ -5400,9 +5443,12 @@ async function driveNoMouseStateAdvance(args) {
         dryRun,
         probeDryRun,
         stopped: true,
-        reason: "no_state_advance_candidate",
-        nextStep: "Enter or expose a state-advanceable no-mouse operation, or restart the game if bridge DLL readiness is the remaining blocker.",
+        reason: rawCandidates.length > 0 ? "state_advance_policy_filtered" : "no_state_advance_candidate",
+        nextStep: rawCandidates.length > 0
+          ? "Relax allow/deny filters or choose an allowed no-mouse state advance operation."
+          : "Enter or expose a state-advanceable no-mouse operation, or restart the game if bridge DLL readiness is the remaining blocker.",
         steps,
+        blockedCandidates,
         finalAudit,
         finalPlan: args?.includePlan === false ? null : plan
       };
