@@ -2958,6 +2958,9 @@ function stateAdvanceCandidatesFromOperations(operations, missingOperationTypes)
   const missingFamilies = new Set((missingOperationTypes || []).map(item => item.family));
   const candidates = (operations || [])
     .filter(operation => operation?.noMouse === true && operation?.ready !== false && operation?.call?.tool !== "witch_input_mouse")
+    .filter(operation => !isSystemUiStateAdvanceOperation(operation))
+    .filter(operation => !isPassiveUiStateAdvanceOperation(operation))
+    .filter(operation => !isLowIntentStateAdvanceOperation(operation))
     .map(operation => {
       const score = stateAdvanceScore(operation, missingFamilies);
       return {
@@ -2971,6 +2974,38 @@ function stateAdvanceCandidatesFromOperations(operations, missingOperationTypes)
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || String(a.operation.label || "").localeCompare(String(b.operation.label || "")));
   return candidates.slice(0, 12);
+}
+
+function isSystemUiStateAdvanceOperation(operation) {
+  if (operation?.family !== "ui") return false;
+  const structuralText = normalizeText([
+    operation?.id,
+    operation?.target?.nodeId,
+    operation?.target?.windowName,
+    operation?.target?.transformPath,
+    operation?.call?.arguments?.selector?.nodeId,
+    operation?.call?.arguments?.selector?.windowName,
+    operation?.call?.arguments?.selector?.transformPath
+  ].filter(Boolean).join(" "));
+  return /(topbarui|\/topbarui\/|\/buttons\/(?:exitgame|setting|cardback|illustration|achievement|archive|gallery|save|load)|exitgame|setting)/i.test(structuralText);
+}
+
+function isPassiveUiStateAdvanceOperation(operation) {
+  if (operation?.family !== "ui") return false;
+  const structuralText = normalizeText([
+    operation?.id,
+    operation?.target?.transformPath,
+    operation?.call?.arguments?.selector?.transformPath
+  ].filter(Boolean).join(" "));
+  return /(description|content\/description|scroll[_\s-]*view|caption|tooltip|hint)/i.test(structuralText);
+}
+
+function isLowIntentStateAdvanceOperation(operation) {
+  const action = normalizeActionName(operation?.action || "");
+  if (operation?.family === "ui" || operation?.family === "scene") {
+    return ["hover", "scroll", "drag"].includes(action);
+  }
+  return false;
 }
 
 function stateAdvanceScore(operation, missingFamilies) {
