@@ -157,6 +157,7 @@ const tools = [
         maxProbesPerStep: { type: "integer", default: 8 },
         waitAfterAdvanceMs: { type: "integer", default: 500 },
         includeScreenshot: { type: "boolean", default: false },
+        includePreview: { type: "boolean", default: true },
         includePlan: { type: "boolean", default: true },
         includeHidden: { type: "boolean", default: false },
         onlyInteractive: { type: "boolean", default: true },
@@ -1905,13 +1906,15 @@ async function restartCollectNoMouseAudit(args) {
 async function restartAdvanceNoMouseAudit(args) {
   if (args?.restartConfirm !== "RESTART_WITCH_GAME") {
     const diagnostics = await runtimeDiagnostics({ includeLogTail: false });
+    const preview = args?.includePreview === false ? null : await restartAdvancePreview(args || {});
     return {
       ok: false,
       complete: false,
       reason: "restart_confirmation_required",
       nextStep: "confirm_restart",
       recommendation: "Re-run with restartConfirm:\"RESTART_WITCH_GAME\" after saving any in-game progress you care about.",
-      diagnostics
+      diagnostics,
+      preview
     };
   }
 
@@ -2026,6 +2029,73 @@ async function restartAdvanceNoMouseAudit(args) {
         ? "Review advanceDrive.steps[].selectedCandidate, then re-run with advanceDryRun:false and advanceConfirm:\"ADVANCE_NO_MOUSE_STATE\" when the planned state changes are acceptable."
         : "Continue with witch_no_mouse_state_advance_drive or enter the remaining missing legal-action, scene, or battle states, then re-run the strict completion audit.")
   };
+}
+
+async function restartAdvancePreview(args) {
+  const audit = await noMouseCompletionAudit({
+    includePolicyTests: true,
+    includeCurrentState: true,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+  const evidencePlan = await noMouseEvidencePlan({
+    includePolicyTests: true,
+    includeCurrentState: true,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false
+  });
+  const filteredCandidates = (evidencePlan.stateAdvanceCandidates || [])
+    .map(candidate => ({
+      candidate,
+      policy: evaluateStateAdvancePolicy(candidate.operation, args || {})
+    }));
+  return {
+    complete: audit.complete === true,
+    missing: audit.missing || [],
+    stateAdvanceCandidates: filteredCandidates
+      .filter(item => item.policy.ok)
+      .map(item => item.candidate),
+    blockedStateAdvanceCandidates: filteredCandidates
+      .filter(item => !item.policy.ok)
+      .map(item => ({ operation: item.candidate.operation, policy: item.policy })),
+    plannedCalls: {
+      restart: {
+        tool: "witch_no_mouse_restart_advance_audit",
+        arguments: {
+          restartConfirm: "RESTART_WITCH_GAME",
+          advanceDryRun: true,
+          probeDryRun: true,
+          maxAdvanceSteps: args?.maxAdvanceSteps ?? 5,
+          maxProbesPerStep: args?.maxProbesPerStep ?? 8,
+          ...compactStateAdvancePolicyArgs(args || {})
+        }
+      },
+      stateAdvanceExecute: {
+        tool: "witch_no_mouse_restart_advance_audit",
+        arguments: {
+          restartConfirm: "RESTART_WITCH_GAME",
+          advanceDryRun: false,
+          advanceConfirm: "ADVANCE_NO_MOUSE_STATE",
+          probeDryRun: args?.probeDryRun !== false,
+          maxAdvanceSteps: args?.maxAdvanceSteps ?? 5,
+          maxProbesPerStep: args?.maxProbesPerStep ?? 8,
+          ...compactStateAdvancePolicyArgs(args || {})
+        }
+      }
+    },
+    evidencePlan: args?.includePlan === false ? undefined : evidencePlan
+  };
+}
+
+function compactStateAdvancePolicyArgs(args) {
+  return pruneUndefined({
+    allowOperationIds: args.allowOperationIds,
+    denyOperationIds: args.denyOperationIds,
+    allowLabels: args.allowLabels,
+    denyLabels: args.denyLabels,
+    allowPaths: args.allowPaths,
+    denyPaths: args.denyPaths
+  });
 }
 
 async function verifyReadiness(args) {

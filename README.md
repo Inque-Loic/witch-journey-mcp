@@ -134,6 +134,7 @@ powershell -ExecutionPolicy Bypass -File .\restart-and-verify.ps1 -ConfirmRestar
 
 `restart-and-verify.ps1` 会关闭并重启游戏。为了避免误操作，它必须传入 `-ConfirmRestart RESTART_WITCH_GAME` 才会执行。
 确认重启时，MCP 会先在游戏进程退出后把仓库中的新版 `bridge-mod/Scripts/Entry.dll` 同步到游戏 Data Mod 目录，再启动游戏并执行验证。`witch_restart_and_watch_bridge` 和 `witch_no_mouse_restart_collect_audit` 使用同一条同步逻辑。
+`witch_no_mouse_restart_advance_audit` 在没有 `restartConfirm:"RESTART_WITCH_GAME"` 时不会重启游戏，但会返回当前严格审计、缺口计划、状态推进候选和建议调用，方便先审查再执行。
 
 ## 构建桥接 DLL
 
