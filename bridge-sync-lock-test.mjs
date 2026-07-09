@@ -57,6 +57,13 @@ try {
   send(child, 2, "tools/call", {
     name: "witch_sync_bridge_artifacts",
     arguments: {
+      dryRun: true,
+      includeDiagnostics: false
+    }
+  });
+  send(child, 3, "tools/call", {
+    name: "witch_sync_bridge_artifacts",
+    arguments: {
       dryRun: false,
       confirm: "SYNC_BRIDGE_ARTIFACTS",
       includeDiagnostics: false,
@@ -64,8 +71,14 @@ try {
     }
   });
   await waitForMessage(messages, 2);
+  await waitForMessage(messages, 3);
 
-  const sync = textResult(messages, 2);
+  const dryRun = textResult(messages, 2);
+  if (dryRun.ok !== false || dryRun.reason !== "copy_target_locked_or_unavailable" || dryRun.sync?.destinationWritable?.errorCategory !== "target_locked_or_unavailable") {
+    throw new Error(`bad locked dry-run sync classification ${JSON.stringify(dryRun, null, 2)}`);
+  }
+
+  const sync = textResult(messages, 3);
   if (sync.ok !== false || sync.reason !== "copy_target_locked_or_unavailable" || sync.sync?.errorCategory !== "target_locked_or_unavailable") {
     throw new Error(`bad locked sync classification ${JSON.stringify(sync, null, 2)}`);
   }

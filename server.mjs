@@ -3849,6 +3849,19 @@ async function syncBridgeArtifacts(args) {
   const startedAt = Date.now();
   const attempts = [];
   let sync = await syncUpdatedBridgeDllToDataRoot({ dryRun });
+  const dryRunTargetMayBeLocked = dryRun && sync?.ok === true && bridgeSyncTargetMayBeLocked(sync, before);
+  if (dryRunTargetMayBeLocked) {
+    sync = {
+      ...sync,
+      targetReplaceVerified: false,
+      targetReplaceRisk: {
+        reason: "running_game_may_lock_stale_data_bridge",
+        processRunning: true,
+        destinationHasUpdatedMarkers: false,
+        nextAction: "Run the manual unlock proof script, then close the game manually so the Data bridge DLL can be replaced."
+      }
+    };
+  }
   attempts.push({ elapsedMs: 0, sync });
   while (waitForUnlock && sync?.ok !== true && isRetryableBridgeSyncFailure(sync) && Date.now() - startedAt < timeoutMs) {
     await new Promise(resolve => setTimeout(resolve, pollMs));
@@ -3865,7 +3878,7 @@ async function syncBridgeArtifacts(args) {
     ok: sync?.ok === true,
     dryRun,
     reason: sync?.ok === true
-      ? (dryRun ? "sync_ready" : (attempts.length > 1 ? "synced_after_wait" : "synced"))
+      ? (dryRun ? (dryRunTargetMayBeLocked ? "sync_ready_target_may_be_locked" : "sync_ready") : (attempts.length > 1 ? "synced_after_wait" : "synced"))
       : (timedOut ? "sync_wait_timeout" : (sync?.reason || "sync_failed")),
     waitForUnlock,
     timedOut,
@@ -3876,18 +3889,30 @@ async function syncBridgeArtifacts(args) {
     diagnosticsAfter: after,
     runtimeEffect: syncFailed
       ? "The target bridge file was not changed."
+      : (dryRunTargetMayBeLocked
+        ? "Dry-run only; the updated bridge source is ready, but the running game may lock the stale Data bridge DLL until manual close or restart."
       : (loadedBridgeMayNeedRestart
         ? "The file is ready for the next game load; the already-running process may still be using the previously loaded DLL until restart."
-        : (dryRun ? "Dry-run only; no files were changed." : "The updated bridge file is present in the Data Mod directory.")),
+        : (dryRun ? "Dry-run only; no files were changed." : "The updated bridge file is present in the Data Mod directory."))),
     nextStep: syncFailed
       ? (timedOut
         ? manualBridgeProofScriptCommand()
         : (retryableSyncFailure ? manualBridgeProofScriptCommand() : (processRunning ? "Restart the game when you are ready, then run witch_sync_bridge_artifacts or witch_no_mouse_restart_collect_audit." : "Inspect sync.error and copy permissions, then run witch_sync_bridge_artifacts again.")))
+      : dryRunTargetMayBeLocked
+      ? manualBridgeProofScriptCommand()
       : loadedBridgeMayNeedRestart
       ? "Restart the game when you are ready, then run witch_no_mouse_restart_collect_audit."
       : "Run witch_no_mouse_completion_audit to verify the bridge artifact readiness requirement.",
-    scriptCommand: syncFailed && retryableSyncFailure ? manualBridgeProofScriptCommand() : undefined
+    scriptCommand: (syncFailed && retryableSyncFailure) || dryRunTargetMayBeLocked ? manualBridgeProofScriptCommand() : undefined
   };
+}
+
+function bridgeSyncTargetMayBeLocked(sync, diagnostics) {
+  const processRunning = diagnostics?.process?.running === true;
+  const destinationExists = sync?.destinationBefore?.exists === true;
+  const destinationMarkers = sync?.destinationMarkers || {};
+  const destinationReady = BRIDGE_MARKERS.every(marker => destinationMarkers?.[marker] === true);
+  return processRunning && destinationExists && !destinationReady;
 }
 
 async function syncUpdatedBridgeDllToDataRoot(options = {}) {
@@ -3918,6 +3943,22 @@ async function syncUpdatedBridgeDllToDataRoot(options = {}) {
     if (dryRun) {
       const destinationInfo = await statInfo(destination);
       const destinationMarkers = destinationInfo.exists ? await scanFileMarkers(destination, BRIDGE_MARKERS) : {};
+      const destinationWritable = await probeBridgeSyncDestinationWritable(destination, destinationInfo);
+      if (destinationWritable.writable === false) {
+        return {
+          ok: false,
+          dryRun: true,
+          reason: destinationWritable.reason,
+          wouldCopy: true,
+          source,
+          destination,
+          destinationBefore: destinationInfo,
+          destinationMarkers,
+          destinationWritable,
+          sourceMarkers: markers,
+          checked
+        };
+      }
       return {
         ok: true,
         dryRun: true,
@@ -3926,6 +3967,7 @@ async function syncUpdatedBridgeDllToDataRoot(options = {}) {
         destination,
         destinationBefore: destinationInfo,
         destinationMarkers,
+        destinationWritable,
         sourceMarkers: markers,
         checked
       };
@@ -3971,6 +4013,45 @@ async function syncUpdatedBridgeDllToDataRoot(options = {}) {
 
 function isRetryableBridgeSyncFailure(sync) {
   return sync?.reason === "copy_failed" || sync?.reason === "copy_target_locked_or_unavailable";
+}
+
+async function probeBridgeSyncDestinationWritable(destination, destinationInfo) {
+  if (!destinationInfo?.exists) {
+    return {
+      ok: true,
+      exists: false,
+      writable: true,
+      reason: "destination_missing",
+      note: "Dry-run did not create the destination; confirmed sync will create the directory and copy the file."
+    };
+  }
+
+  let handle = null;
+  try {
+    handle = await fs.open(destination, "r+");
+    return {
+      ok: true,
+      exists: true,
+      writable: true,
+      reason: "destination_writable"
+    };
+  } catch (error) {
+    const copyError = classifyBridgeCopyError(error);
+    return {
+      ok: false,
+      exists: true,
+      writable: false,
+      reason: copyError.reason,
+      error: copyError.message,
+      errorCode: copyError.code,
+      errorCategory: copyError.category,
+      nextAction: copyError.nextAction
+    };
+  } finally {
+    if (handle) {
+      await handle.close().catch(() => {});
+    }
+  }
 }
 
 function classifyBridgeCopyError(error) {

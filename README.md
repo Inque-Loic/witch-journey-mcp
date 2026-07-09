@@ -170,7 +170,7 @@ powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -Help
 powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -Status
 ```
 
-`-Status` 会汇总桥接是否在线、游戏进程是否正在运行、Data 目录桥接 DLL 是否已经带有 `battle.snapshot`、严格审计还缺哪些现场样本，以及下一条推荐命令。它也支持 `-OutputPath`，写出的状态包便于复查当前卡点。
+`-Status` 会汇总桥接是否在线、游戏进程是否正在运行、Data 目录桥接 DLL 是否已经带有 `battle.snapshot`、严格审计还缺哪些现场样本，以及下一条推荐命令。如果游戏正在运行且 Data 目录 DLL 还是旧版，同步预览可能显示 `sync_ready_target_may_be_locked`，表示新版源文件已准备好，但目标 DLL 需要等游戏关闭释放后才能可靠替换。它也支持 `-OutputPath`，写出的状态包便于复查当前卡点。
 
 不带确认参数时，它只会预览严格审计缺口和当前无鼠标状态推进候选，不会关闭或重启游戏。确认已经保存好进度并希望加载新版桥接 DLL 后，可以运行：
 
