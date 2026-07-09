@@ -127,6 +127,7 @@ npm run selftest
 npm run calltest
 npm run orchestration-test
 npm run state-advance-policy-test
+npm run bridge-sync-test
 npm run no-mouse-test
 npm run e2e-fake
 ```
