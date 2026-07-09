@@ -2798,11 +2798,21 @@ function stateAdvanceScore(operation, missingFamilies) {
   const family = operation?.family || "";
   const action = normalizeActionName(operation?.action || "");
   const label = normalizeText([operation?.label, operation?.target?.label, operation?.target?.text, operation?.target?.name].filter(Boolean).join(" "));
+  const structuralText = normalizeText([
+    operation?.id,
+    operation?.target?.nodeId,
+    operation?.target?.objectId,
+    operation?.target?.transformPath,
+    operation?.call?.arguments?.selector?.nodeId,
+    operation?.call?.arguments?.selector?.transformPath
+  ].filter(Boolean).join(" "));
   if (family === "legal_action") score += 100;
   if (family === "ui") score += 30;
   if (family === "scene") score += 50;
   if (family === "battle") score += 80;
   if (action === "click" || action === "submit") score += 15;
+  if (/(selector|option|choice|button|confirm|continue|next|start|enter|ok)/i.test(structuralText)) score += 65;
+  if (/(description|scroll[_\s-]*view|content\/description|caption|topbar|setting|exitgame)/i.test(structuralText)) score -= 35;
   if (/(start|begin|new|continue|journey|play|run|enter|confirm|ok|yes|next|map|battle|fight|combat|adventure|探索|开始|继续|确定|进入|战斗|地图|冒险)/i.test(label)) score += 80;
   if (missingFamilies.has("legal_action") && /(start|journey|run|play|continue|开始|继续)/i.test(label)) score += 40;
   if (missingFamilies.has("scene") && /(map|enter|explore|door|world|scene|地图|进入|探索|门)/i.test(label)) score += 35;
@@ -2814,6 +2824,12 @@ function stateAdvanceScore(operation, missingFamilies) {
 function stateAdvanceReason(operation, missingFamilies, score) {
   if (operation?.family === "legal_action") return "Current legal action may advance gameplay state toward missing evidence.";
   const label = normalizeText(operation?.label || "");
+  const structuralText = normalizeText([
+    operation?.id,
+    operation?.target?.transformPath,
+    operation?.call?.arguments?.selector?.transformPath
+  ].filter(Boolean).join(" "));
+  if (/(selector|option|choice|button|confirm|continue|next)/i.test(structuralText)) return "Operation targets a selectable UI control that is more likely to advance state than passive text.";
   if (missingFamilies.has("battle") && /(battle|fight|combat|战斗)/i.test(label)) return "Label looks battle-related and battle evidence is missing.";
   if (missingFamilies.has("scene") && /(map|enter|explore|地图|进入|探索)/i.test(label)) return "Label looks scene/exploration-related and scene evidence is missing.";
   if (missingFamilies.has("legal_action") && /(start|journey|continue|开始|继续)/i.test(label)) return "Label looks like it may enter gameplay where legal actions become available.";
