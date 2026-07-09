@@ -10,6 +10,8 @@
   },
   "scripts": {
     "start": "node server.mjs",
+    "test": "npm run test:fake && npm run no-mouse-test",
+    "test:fake": "npm run selftest && npm run calltest && npm run orchestration-test && npm run state-advance-policy-test && npm run e2e-fake",
     "selftest": "node selftest.mjs",
     "calltest": "node calltest.mjs",
     "orchestration-test": "node orchestration-test.mjs",

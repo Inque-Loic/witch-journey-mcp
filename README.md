@@ -111,9 +111,22 @@ MCP 默认不使用 OS 鼠标。也就是说：
 不启动真实游戏桥时，可以运行本地协议测试：
 
 ```powershell
+npm test
+```
+
+如果只想运行不依赖真实游戏进程的 fake bridge 回归：
+
+```powershell
+npm run test:fake
+```
+
+也可以单独运行：
+
+```powershell
 npm run selftest
 npm run calltest
 npm run orchestration-test
+npm run state-advance-policy-test
 npm run no-mouse-test
 npm run e2e-fake
 ```
