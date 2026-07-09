@@ -3814,7 +3814,7 @@ async function syncBridgeArtifacts(args) {
   const attempts = [];
   let sync = await syncUpdatedBridgeDllToDataRoot({ dryRun });
   attempts.push({ elapsedMs: 0, sync });
-  while (waitForUnlock && sync?.ok !== true && sync?.reason === "copy_failed" && Date.now() - startedAt < timeoutMs) {
+  while (waitForUnlock && sync?.ok !== true && isRetryableBridgeSyncFailure(sync) && Date.now() - startedAt < timeoutMs) {
     await new Promise(resolve => setTimeout(resolve, pollMs));
     sync = await syncUpdatedBridgeDllToDataRoot({ dryRun: false });
     attempts.push({ elapsedMs: Date.now() - startedAt, sync });
@@ -3907,13 +3907,17 @@ async function syncUpdatedBridgeDllToDataRoot(options = {}) {
         checked
       };
     } catch (error) {
+      const copyError = classifyBridgeCopyError(error);
       return {
         ok: false,
         dryRun: false,
-        reason: "copy_failed",
+        reason: copyError.reason,
         source,
         destination,
-        error: error.message,
+        error: copyError.message,
+        errorCode: copyError.code,
+        errorCategory: copyError.category,
+        nextAction: copyError.nextAction,
         checked
       };
     }
@@ -3924,6 +3928,32 @@ async function syncUpdatedBridgeDllToDataRoot(options = {}) {
     reason: "no_updated_bridge_dll_candidate",
     destination,
     checked
+  };
+}
+
+function isRetryableBridgeSyncFailure(sync) {
+  return sync?.reason === "copy_failed" || sync?.reason === "copy_target_locked_or_unavailable";
+}
+
+function classifyBridgeCopyError(error) {
+  const code = String(error?.code || "").trim();
+  const message = String(error?.message || error || "");
+  const combined = `${code} ${message}`;
+  if (/EBUSY|EPERM|EACCES|UNKNOWN|being used|used by another process|cannot access.*because.*used|另一个程序|正在使用/i.test(combined)) {
+    return {
+      reason: "copy_target_locked_or_unavailable",
+      category: "target_locked_or_unavailable",
+      code: code || null,
+      message,
+      nextAction: "Close or restart the running game so Witch's Apocalyptic Journey_Data\\Mods\\CodexMcpBridge\\Scripts\\Entry.dll is released, then rerun witch_sync_bridge_artifacts with confirm:\"SYNC_BRIDGE_ARTIFACTS\"."
+    };
+  }
+  return {
+    reason: "copy_failed",
+    category: "copy_failed",
+    code: code || null,
+    message,
+    nextAction: "Inspect file permissions, source/destination paths, antivirus locks, and free disk space, then rerun witch_sync_bridge_artifacts."
   };
 }
 
