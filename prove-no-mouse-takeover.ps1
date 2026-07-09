@@ -4,6 +4,7 @@ param(
   [int]$IntervalSec = 2,
   [int]$MaxAdvanceSteps = 8,
   [int]$MaxProbesPerStep = 8,
+  [string]$OutputPath,
   [switch]$ExecuteStateAdvance,
   [switch]$ExecuteProbes,
   [switch]$IncludeScreenshot
@@ -104,6 +105,75 @@ function Write-ProofSummary {
   }
 }
 
+function Get-ProofAudit {
+  param($Result)
+
+  if ($Result.completionAudit) {
+    return $Result.completionAudit
+  }
+  if ($Result.preview -and $Result.preview.evidencePlan -and $Result.preview.evidencePlan.audit) {
+    return $Result.preview.evidencePlan.audit
+  }
+  if ($Result.advanceDrive -and $Result.advanceDrive.finalAudit) {
+    return $Result.advanceDrive.finalAudit
+  }
+  return $null
+}
+
+function Get-ProofPlan {
+  param($Result)
+
+  if ($Result.evidencePlan) {
+    return $Result.evidencePlan
+  }
+  if ($Result.preview -and $Result.preview.evidencePlan) {
+    return $Result.preview.evidencePlan
+  }
+  if ($Result.advanceDrive -and $Result.advanceDrive.finalPlan) {
+    return $Result.advanceDrive.finalPlan
+  }
+  return $null
+}
+
+function Write-ProofBundle {
+  param(
+    [Parameter(Mandatory = $true)]$Result,
+    [Parameter(Mandatory = $true)][string]$Mode,
+    [Parameter(Mandatory = $true)][hashtable]$Arguments,
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  $audit = Get-ProofAudit $Result
+  $plan = Get-ProofPlan $Result
+  $bundle = [ordered]@{
+    schemaVersion = 1
+    generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+    mode = $Mode
+    command = "prove-no-mouse-takeover.ps1"
+    arguments = $Arguments
+    complete = $Result.complete -eq $true
+    reason = $Result.reason
+    nextStep = $Result.nextStep
+    recommendation = $Result.recommendation
+    missing = if ($audit -and $audit.missing) { @($audit.missing) } else { @() }
+    stateAdvanceCandidates = if ($plan -and $plan.stateAdvanceCandidates) { @($plan.stateAdvanceCandidates) } else { @() }
+    result = $Result
+  }
+
+  $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+  $parent = Split-Path -Parent $resolved
+  if (-not [string]::IsNullOrWhiteSpace($parent)) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $bundle | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $resolved -Encoding UTF8
+  Write-Host ""
+  Write-Host ("Proof bundle written: " + $resolved)
+}
+
 $argsForTool = @{
   timeoutMs = $TimeoutSec * 1000
   pollMs = [Math]::Max(100, $IntervalSec * 1000)
@@ -121,6 +191,7 @@ if ($ConfirmRestart -ne "RESTART_WITCH_GAME") {
   Write-Host ""
   $preview = Invoke-WitchMcpJson witch_no_mouse_restart_advance_audit $argsForTool
   Write-ProofSummary $preview
+  Write-ProofBundle $preview "preview" $argsForTool $OutputPath
   exit 2
 }
 
@@ -142,6 +213,7 @@ Write-Host ""
 
 $result = Invoke-WitchMcpJson witch_no_mouse_restart_advance_audit $argsForTool
 Write-ProofSummary $result
+Write-ProofBundle $result "confirmed" $argsForTool $OutputPath
 
 if ($result.complete -eq $true) {
   exit 0
