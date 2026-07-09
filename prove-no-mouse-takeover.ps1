@@ -1,5 +1,6 @@
 param(
   [switch]$Help,
+  [switch]$Status,
   [string]$ConfirmRestart,
   [int]$TimeoutSec = 180,
   [int]$IntervalSec = 2,
@@ -23,6 +24,9 @@ function Show-Usage {
   Write-Host ""
   Write-Host "Safe preview, no game process changes:"
   Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1"
+  Write-Host ""
+  Write-Host "Current status summary, no game process changes:"
+  Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -Status"
   Write-Host ""
   Write-Host "Wait for you to close the game manually, then sync the updated bridge DLL:"
   Write-Host "  powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock"
@@ -94,6 +98,176 @@ function Format-Missing {
       "- $($_.name)"
     }
   })
+}
+
+function Invoke-WitchMcpJsonStatus {
+  param(
+    [Parameter(Mandatory = $true)][string]$Tool,
+    [hashtable]$Arguments = @{}
+  )
+
+  try {
+    return [ordered]@{
+      ok = $true
+      tool = $Tool
+      arguments = $Arguments
+      result = Invoke-WitchMcpJson $Tool $Arguments
+    }
+  } catch {
+    return [ordered]@{
+      ok = $false
+      tool = $Tool
+      arguments = $Arguments
+      error = $_.Exception.Message
+    }
+  }
+}
+
+function Select-StatusNextCommand {
+  param(
+    $Audit,
+    $Plan,
+    $SyncDryRun
+  )
+
+  if ($Plan -and $Plan.requirementSteps) {
+    foreach ($step in @($Plan.requirementSteps)) {
+      if ($step.scriptCommand) {
+        return [string]$step.scriptCommand
+      }
+    }
+  }
+
+  if ($SyncDryRun -and $SyncDryRun.scriptCommand) {
+    return [string]$SyncDryRun.scriptCommand
+  }
+
+  return "powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -WaitForDllUnlock -WaitForBridgeAfterSync -OutputPath .\no-mouse-proof.json"
+}
+
+function Write-StatusSummary {
+  param(
+    $DiagnosticsCall,
+    $SyncDryRunCall,
+    $AuditCall,
+    $PlanCall,
+    [string]$NextCommand
+  )
+
+  $diagnostics = if ($DiagnosticsCall.ok) { $DiagnosticsCall.result } else { $null }
+  $syncDryRun = if ($SyncDryRunCall.ok) { $SyncDryRunCall.result } else { $null }
+  $audit = if ($AuditCall.ok) { $AuditCall.result } else { $null }
+  $plan = if ($PlanCall.ok) { $PlanCall.result } else { $null }
+
+  $bridgeOnline = $false
+  $gameRunning = $false
+  $dataBattleMarker = $null
+  $processStartedBeforeNewestArtifact = $null
+
+  if ($diagnostics) {
+    $bridgeOnline = $diagnostics.bridgeStatus -and $diagnostics.bridgeStatus.ok -eq $true
+    $gameRunning = $diagnostics.process -and $diagnostics.process.running -eq $true
+    if ($diagnostics.bridgeArtifactFreshness) {
+      $processStartedBeforeNewestArtifact = $diagnostics.bridgeArtifactFreshness.processStartedBeforeNewestArtifact
+    }
+    if ($diagnostics.modFiles) {
+      $dataMod = @($diagnostics.modFiles | Where-Object { $_.root -like "*_Data*" } | Select-Object -First 1)
+      if ($dataMod.Count -gt 0) {
+        if ($null -ne $dataMod[0].battleSnapshotMarker) {
+          $dataBattleMarker = $dataMod[0].battleSnapshotMarker
+        } elseif ($dataMod[0].dllMarkers) {
+          $dataBattleMarker = $dataMod[0].dllMarkers.'battle.snapshot'
+        }
+      }
+    }
+  }
+
+  Write-Host ""
+  Write-Host "No-mouse status:"
+  Write-Host ("  bridge online:                     " + [string]$bridgeOnline)
+  Write-Host ("  game process running:              " + [string]$gameRunning)
+  Write-Host ("  Data bridge has battle.snapshot:   " + [string]$dataBattleMarker)
+  Write-Host ("  process older than newest bridge:  " + [string]$processStartedBeforeNewestArtifact)
+
+  if ($syncDryRun) {
+    Write-Host ("  sync dry-run ok:                   " + [string]$syncDryRun.ok)
+    Write-Host ("  sync dry-run reason:               " + [string]$syncDryRun.reason)
+  } elseif (-not $SyncDryRunCall.ok) {
+    Write-Host ("  sync dry-run error:                " + [string]$SyncDryRunCall.error)
+  }
+
+  if ($audit) {
+    Write-Host ("  strict proof complete:             " + [string]$audit.complete)
+    Write-Host ("  missing proof item count:          " + [string]@($audit.missing).Count)
+    $missing = Format-Missing $audit
+    if ($missing.Count -gt 0) {
+      Write-Host ""
+      Write-Host "Missing proof items:"
+      $missing | ForEach-Object { Write-Host $_ }
+    }
+  } elseif (-not $AuditCall.ok) {
+    Write-Host ("  strict audit error:                " + [string]$AuditCall.error)
+  }
+
+  if ($plan -and $plan.stateAdvanceCandidates) {
+    $candidate = @($plan.stateAdvanceCandidates | Select-Object -First 1)
+    if ($candidate.Count -gt 0) {
+      $op = $candidate[0].operation
+      Write-Host ""
+      Write-Host "Top no-mouse state-advance candidate:"
+      Write-Host ("- score={0} family={1} action={2} label={3}" -f $candidate[0].score, $op.family, $op.action, $op.label)
+      Write-Host ("  operationId: " + $op.id)
+    }
+  } elseif (-not $PlanCall.ok) {
+    Write-Host ("  evidence plan error:               " + [string]$PlanCall.error)
+  }
+
+  Write-Host ""
+  Write-Host ("Next command: " + $NextCommand)
+}
+
+function Write-StatusBundle {
+  param(
+    [Parameter(Mandatory = $true)]$DiagnosticsCall,
+    [Parameter(Mandatory = $true)]$SyncDryRunCall,
+    [Parameter(Mandatory = $true)]$AuditCall,
+    [Parameter(Mandatory = $true)]$PlanCall,
+    [Parameter(Mandatory = $true)][string]$NextCommand,
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  $audit = if ($AuditCall.ok) { $AuditCall.result } else { $null }
+  $bundle = [ordered]@{
+    schemaVersion = 1
+    generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+    mode = "status"
+    command = "prove-no-mouse-takeover.ps1"
+    arguments = @{
+      status = $true
+      outputPath = $Path
+    }
+    complete = $audit -and $audit.complete -eq $true
+    nextCommand = $NextCommand
+    missing = if ($audit -and $audit.missing) { @($audit.missing) } else { @() }
+    diagnostics = $DiagnosticsCall
+    syncDryRun = $SyncDryRunCall
+    audit = $AuditCall
+    evidencePlan = $PlanCall
+  }
+
+  $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+  $parent = Split-Path -Parent $resolved
+  if (-not [string]::IsNullOrWhiteSpace($parent)) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $bundle | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $resolved -Encoding UTF8
+  Write-Host ""
+  Write-Host ("Status bundle written: " + $resolved)
+  Write-Host "Status bundles may include local game paths and current game state; review before sharing."
 }
 
 function Write-ProofSummary {
@@ -321,6 +495,29 @@ $argsForTool = @{
   maxProbesPerStep = $MaxProbesPerStep
   includeScreenshot = [bool]$IncludeScreenshot
   includePlan = $true
+}
+
+if ($Status) {
+  if ($WaitForDllUnlock -or $ConfirmRestart -eq "RESTART_WITCH_GAME" -or $ExecuteStateAdvance -or $ExecuteProbes) {
+    throw "-Status is read-only; do not combine it with sync, restart, state-advance, or probe execution switches."
+  }
+
+  Write-Host "Collecting current no-mouse status."
+  Write-Host "No game process will be closed, restarted, synced, or advanced."
+  $diagnosticsCall = Invoke-WitchMcpJsonStatus witch_runtime_diagnostics @{}
+  $syncDryRunCall = Invoke-WitchMcpJsonStatus witch_sync_bridge_artifacts @{
+    dryRun = $true
+    includeDiagnostics = $true
+  }
+  $auditCall = Invoke-WitchMcpJsonStatus witch_no_mouse_completion_audit @{}
+  $planCall = Invoke-WitchMcpJsonStatus witch_no_mouse_evidence_plan @{}
+  $audit = if ($auditCall.ok) { $auditCall.result } else { $null }
+  $plan = if ($planCall.ok) { $planCall.result } else { $null }
+  $syncDryRun = if ($syncDryRunCall.ok) { $syncDryRunCall.result } else { $null }
+  $nextCommand = Select-StatusNextCommand $audit $plan $syncDryRun
+  Write-StatusSummary $diagnosticsCall $syncDryRunCall $auditCall $planCall $nextCommand
+  Write-StatusBundle $diagnosticsCall $syncDryRunCall $auditCall $planCall $nextCommand $OutputPath
+  exit 0
 }
 
 if ($WaitForDllUnlock) {

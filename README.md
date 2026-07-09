@@ -164,6 +164,14 @@ powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1
 powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -Help
 ```
 
+如果只想知道当前是否已经满足“完全无鼠标接管”的严格证明，不希望脚本关闭、重启、同步或推进游戏，可以运行只读状态检查：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\prove-no-mouse-takeover.ps1 -Status
+```
+
+`-Status` 会汇总桥接是否在线、游戏进程是否正在运行、Data 目录桥接 DLL 是否已经带有 `battle.snapshot`、严格审计还缺哪些现场样本，以及下一条推荐命令。它也支持 `-OutputPath`，写出的状态包便于复查当前卡点。
+
 不带确认参数时，它只会预览严格审计缺口和当前无鼠标状态推进候选，不会关闭或重启游戏。确认已经保存好进度并希望加载新版桥接 DLL 后，可以运行：
 
 ```powershell

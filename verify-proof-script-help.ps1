@@ -10,6 +10,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $required = @(
   "Safe preview",
+  "-Status",
   "-WaitForDllUnlock",
   "-WaitForBridgeAfterSync",
   "-ConfirmRestart RESTART_WITCH_GAME",
