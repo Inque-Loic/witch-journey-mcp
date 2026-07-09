@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "npm run test:fake && npm run python-syntax-test && npm run script-syntax-test && npm run no-mouse-test",
+    "test": "npm run test:fake && npm run python-syntax-test && npm run script-syntax-test && npm run proof-script-help-test && npm run no-mouse-test",
     "test:fake": "npm run selftest && npm run calltest && npm run orchestration-test && npm run state-advance-policy-test && npm run bridge-sync-test && npm run bridge-sync-lock-test && npm run e2e-fake",
     "selftest": "node selftest.mjs",
     "calltest": "node calltest.mjs",
@@ -21,6 +21,7 @@
     "python-syntax-test": "python -m py_compile mcp-call.py config-launch-test.py",
     "no-mouse-test": "powershell -ExecutionPolicy Bypass -File verify-no-mouse-policy.ps1",
     "script-syntax-test": "powershell -NoProfile -ExecutionPolicy Bypass -File verify-script-syntax.ps1",
+    "proof-script-help-test": "powershell -NoProfile -ExecutionPolicy Bypass -File verify-proof-script-help.ps1",
     "e2e-fake": "node verify-end-to-end-fake.mjs"
   },
   "engines": {
