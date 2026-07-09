@@ -83,7 +83,7 @@
 - 游戏合法动作、战斗快照、出牌、合法动作匹配、有边界的自动驾驶
 - 运行时类型/对象检查、组件成员枚举、组件方法 dry-run/确认调用、组件属性 dry-run/确认写入、静态运行时方法调用
 - 观察-规划-执行辅助，例如 `witch_control_map`、`witch_execute_operation`、`witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
-- 无鼠标能力审计、运行时覆盖矩阵、跨状态证据记录和严格完成度审计，例如 `witch_no_mouse_audit`、`witch_no_mouse_coverage`、`witch_no_mouse_record_evidence`、`witch_no_mouse_completion_audit`
+- 无鼠标能力审计、运行时覆盖矩阵、跨状态证据记录、证据缺口计划和严格完成度审计，例如 `witch_no_mouse_audit`、`witch_no_mouse_coverage`、`witch_no_mouse_record_evidence`、`witch_no_mouse_evidence_plan`、`witch_no_mouse_completion_audit`
 
 建议对接管循环、组件调用、组件写入、静态运行时调用先使用 dry-run，确认目标和参数后再执行真实动作。
 
@@ -101,7 +101,7 @@ MCP 默认不使用 OS 鼠标。也就是说：
 
 如果确实要临时恢复 OS 鼠标兜底，可以设置环境变量 `WITCH_JOURNEY_NO_MOUSE=0`，或单次调用 `witch_input_mouse` 时传 `noMouse:false`。不建议把它作为自动接管路径。
 
-`witch_no_mouse_coverage` 用来确认能力是否齐全；`witch_no_mouse_record_evidence` 用来在不同游戏状态下记录紧凑证据，包括操作族和 action 类型摘要；`witch_no_mouse_completion_audit` 更严格，用来判断是否已经足以宣布“完全无鼠标接管”目标完成。它会要求 UI、场景、战斗、合法动作等操作族都有现场证据；证据不足时会返回 `complete:false` 和下一步建议，而不是把单一界面的成功误报为全局完成。
+`witch_no_mouse_coverage` 用来确认能力是否齐全；`witch_no_mouse_record_evidence` 用来在不同游戏状态下记录紧凑证据，包括操作族和 action 类型摘要；`witch_no_mouse_evidence_plan` 会把严格审计里的缺口转换成当前可执行的 `witch_execute_operation` 探针、需要进入的游戏状态或需要重启加载 DLL 的步骤；`witch_no_mouse_completion_audit` 更严格，用来判断是否已经足以宣布“完全无鼠标接管”目标完成。它会要求 UI、场景、战斗、合法动作等操作族都有现场证据；证据不足时会返回 `complete:false` 和下一步建议，而不是把单一界面的成功误报为全局完成。
 
 证据日志默认写入仓库本地的 `.witch-no-mouse-evidence.json`，该文件已被 `.gitignore` 排除，不会上传到公开仓库。
 

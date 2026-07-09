@@ -480,8 +480,9 @@ send(46, "tools/call", { name: "witch_no_mouse_coverage", arguments: { includeCu
 send(47, "tools/call", { name: "witch_no_mouse_record_evidence", arguments: { reset: true, note: "orchestration-test" } });
 send(48, "tools/call", { name: "witch_no_mouse_completion_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 send(49, "tools/call", { name: "witch_execute_operation", arguments: { family: "battle", action: "play_card_target", dryRun: true } });
+send(50, "tools/call", { name: "witch_no_mouse_evidence_plan", arguments: { includeCurrentState: true, includePolicyTests: true } });
 
-for (let id = 2; id <= 49; id++) {
+for (let id = 2; id <= 50; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -545,8 +546,9 @@ const noMouseCoverage = textResult(46);
 const noMouseEvidence = textResult(47);
 const noMouseCompletionAudit = textResult(48);
 const executeOperation = textResult(49);
+const noMouseEvidencePlan = textResult(50);
 
-if (!capabilities.ok || capabilities.tools.length < 51 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
+if (!capabilities.ok || capabilities.tools.length < 53 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -611,6 +613,9 @@ if (!noMouseCompletionAudit.complete || noMouseCompletionAudit.requirements?.som
 }
 if (!executeOperation.ok || executeOperation.dryRun !== true || executeOperation.selected?.family !== "battle" || executeOperation.selected?.action !== "play_card_target" || executeOperation.plannedCall?.tool !== "witch_play_card" || executeOperation.result?.skipped !== true) {
   throw new Error(`bad execute operation ${JSON.stringify(executeOperation, null, 2)}`);
+}
+if (!noMouseEvidencePlan.ok || noMouseEvidencePlan.complete !== true || noMouseEvidencePlan.readyProbeCount !== 0 || noMouseEvidencePlan.completionAuditCall?.tool !== "witch_no_mouse_completion_audit") {
+  throw new Error(`bad no-mouse evidence plan ${JSON.stringify(noMouseEvidencePlan, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);

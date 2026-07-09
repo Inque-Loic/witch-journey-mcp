@@ -172,6 +172,24 @@ const tools = [
     }
   },
   {
+    name: "witch_no_mouse_evidence_plan",
+    description: "Turn the strict no-mouse completion audit into concrete next proof steps, including current witch_execute_operation probes when matching no-mouse operations are available.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includePolicyTests: { type: "boolean", default: true },
+        includeCurrentState: { type: "boolean", default: true },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        requireLiveSamples: { type: "boolean", default: true },
+        requireNativeBattleSnapshot: { type: "boolean", default: true },
+        includeEvidenceLog: { type: "boolean", default: true },
+        includeControlMap: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_runtime_diagnostics",
     description: "Inspect local runtime state without requiring the bridge: process, installed mod files, DLL command markers, Player.log evidence, and bridge status.",
     inputSchema: {
@@ -1221,6 +1239,9 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_no_mouse_completion_audit") {
       return toolResult(id, await noMouseCompletionAudit(args));
+    }
+    if (toolName === "witch_no_mouse_evidence_plan") {
+      return toolResult(id, await noMouseEvidencePlan(args));
     }
     if (toolName === "witch_runtime_diagnostics") {
       return toolResult(id, await runtimeDiagnostics(args));
@@ -2378,6 +2399,169 @@ function operationTypeCompletionEvidence(currentTypes, log, options = {}) {
     observed: observedLists,
     missingRequired
   };
+}
+
+async function noMouseEvidencePlan(args) {
+  const audit = await noMouseCompletionAudit({
+    includePolicyTests: args?.includePolicyTests !== false,
+    includeCurrentState: args?.includeCurrentState !== false,
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    requireLiveSamples: args?.requireLiveSamples !== false,
+    requireNativeBattleSnapshot: args?.requireNativeBattleSnapshot !== false,
+    includeEvidenceLog: args?.includeEvidenceLog !== false
+  });
+  const controlMap = await collectControlMap({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    includeActions: true,
+    includeUi: true,
+    includeScene: true,
+    includeBattle: true,
+    includeUnsupported: true
+  });
+  const operationRequirement = audit.requirements?.find(item => item.name === "operation_type_samples_observed");
+  const missingOperationTypes = Array.isArray(operationRequirement?.evidence?.missingRequired)
+    ? operationRequirement.evidence.missingRequired
+    : [];
+  const operations = Array.isArray(controlMap.operations) ? controlMap.operations : [];
+  const operationProofSteps = missingOperationTypes.map(missing => operationProofStep(missing, operations));
+  const requirementSteps = (audit.missing || [])
+    .filter(item => item.name !== "operation_type_samples_observed")
+    .map(item => requirementProofStep(item));
+  const readyProbeCount = operationProofSteps.filter(item => item.status === "ready_in_current_state").length;
+
+  return {
+    ok: true,
+    complete: audit.complete === true,
+    capturedAtUtc: new Date().toISOString(),
+    summary: audit.complete === true
+      ? "No-mouse completion is already proven by the strict audit."
+      : "No-mouse completion still needs the listed proof steps before it can be claimed.",
+    readyProbeCount,
+    missingCount: audit.missing?.length || 0,
+    missingOperationTypes,
+    operationProofSteps,
+    requirementSteps,
+    recordEvidenceCall: {
+      tool: "witch_no_mouse_record_evidence",
+      arguments: {
+        note: "no-mouse evidence plan sample",
+        includePolicyTests: false,
+        includeHidden: !!args?.includeHidden,
+        onlyInteractive: args?.onlyInteractive !== false
+      }
+    },
+    completionAuditCall: {
+      tool: "witch_no_mouse_completion_audit",
+      arguments: {
+        includePolicyTests: args?.includePolicyTests !== false,
+        includeCurrentState: args?.includeCurrentState !== false,
+        includeHidden: !!args?.includeHidden,
+        onlyInteractive: args?.onlyInteractive !== false
+      }
+    },
+    audit,
+    controlMap: args?.includeControlMap ? controlMap : {
+      ok: controlMap.ok,
+      operationCount: controlMap.operationCount,
+      readyOperationCount: controlMap.readyOperationCount,
+      byFamily: controlMap.byFamily,
+      actionTypesByFamily: actionTypesFromControlMap(controlMap)
+    }
+  };
+}
+
+function operationProofStep(missing, operations) {
+  const candidates = operations.filter(operation => operationMatchesMissingType(operation, missing));
+  const ready = candidates.find(operation => operation.ready !== false) || null;
+  const selected = ready || candidates[0] || null;
+  if (!selected) {
+    return {
+      family: missing.family,
+      action: missing.action,
+      status: "not_available_current_state",
+      message: "The current game state does not expose this no-mouse operation type yet.",
+      nextAction: stateEntryHintForMissingType(missing)
+    };
+  }
+
+  const executeArguments = { operationId: selected.id, dryRun: true };
+  const step = {
+    family: missing.family,
+    action: missing.action,
+    status: ready ? "ready_in_current_state" : "operation_available_needs_arguments",
+    operation: summarizeOperationForProof(selected),
+    dryRunCall: { tool: "witch_execute_operation", arguments: executeArguments },
+    executeCall: { tool: "witch_execute_operation", arguments: { ...executeArguments, dryRun: false } },
+    nextAction: ready
+      ? "Run the dry-run call, then execute with dryRun:false only when the selected operation is safe for the current game state; afterwards call witch_no_mouse_record_evidence."
+      : "Supply the required arguments, run witch_execute_operation, then call witch_no_mouse_record_evidence."
+  };
+  if (selected.requiresArguments?.length) {
+    step.requiredArguments = selected.requiresArguments;
+  }
+  return step;
+}
+
+function operationMatchesMissingType(operation, missing) {
+  if (!operation || operation.family !== missing.family) return false;
+  if (missing.family === "legal_action" && missing.action === "perform") return true;
+  return normalizeActionName(operation.action) === normalizeActionName(missing.action);
+}
+
+function summarizeOperationForProof(operation) {
+  return {
+    id: operation.id,
+    family: operation.family,
+    action: operation.action,
+    label: operation.label,
+    ready: operation.ready,
+    noMouse: operation.noMouse,
+    call: operation.call,
+    requiresArguments: operation.requiresArguments || []
+  };
+}
+
+function requirementProofStep(item) {
+  const restartNeeded = item.name === "updated_data_bridge_loaded_or_ready" || item.name === "native_battle_snapshot_active";
+  return {
+    name: item.name,
+    status: restartNeeded ? "requires_game_restart_or_external_state" : "requires_live_state_sample",
+    nextAction: item.nextAction || null,
+    suggestedCall: restartNeeded
+      ? {
+        tool: "witch_restart_and_watch_bridge",
+        arguments: {
+          confirm: "RESTART_WITCH_GAME",
+          runAuditWhenReady: true,
+          includeScreenshot: false
+        }
+      }
+      : {
+        tool: "witch_no_mouse_record_evidence",
+        arguments: {
+          note: item.name,
+          includePolicyTests: false
+        }
+      }
+  };
+}
+
+function stateEntryHintForMissingType(missing) {
+  if (missing.family === "legal_action") {
+    return "Enter a gameplay state where witch_legal_actions returns at least one legal action, then record evidence.";
+  }
+  if (missing.family === "scene") {
+    return "Enter an explorable scene with interactive world objects, then record evidence for scene automation.";
+  }
+  if (missing.family === "battle") {
+    return "Enter battle; for play_card_target, make sure at least one playable card and target are exposed.";
+  }
+  if (missing.family === "ui") {
+    return "Open a UI screen exposing this action type, then record evidence.";
+  }
+  return "Move to a game state exposing this operation type, then record evidence.";
 }
 
 async function inspectNoMouseRuntimeServices() {
@@ -4864,6 +5048,8 @@ async function executeBatchStep(step, options) {
       return recordNoMouseEvidence(args);
     case "witch_no_mouse_completion_audit":
       return noMouseCompletionAudit(args);
+    case "witch_no_mouse_evidence_plan":
+      return noMouseEvidencePlan(args);
     case "witch_status":
       return safeCallBridge("status", {});
     case "witch_game_snapshot":
