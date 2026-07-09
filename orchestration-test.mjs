@@ -348,6 +348,7 @@ send(23, "tools/call", { name: "witch_input_mouse", arguments: { action: "move",
 send(24, "tools/call", { name: "witch_window_focus", arguments: {} });
 send(25, "tools/call", { name: "witch_batch", arguments: {
   dryRun: true,
+  stopOnError: false,
   steps: [
     { tool: "witch_window_focus", arguments: {} },
     { tool: "witch_input_key", arguments: { key: "enter" } },
@@ -418,8 +419,9 @@ send(40, "tools/call", { name: "witch_takeover_audit", arguments: { bridgeTimeou
 send(41, "tools/call", { name: "witch_watch_bridge_load", arguments: { timeoutMs: 1000, pollMs: 50, runAuditWhenReady: true, includeScreenshot: false } });
 send(42, "tools/call", { name: "witch_restart_and_watch_bridge", arguments: { timeoutMs: 1000, pollMs: 50 } });
 send(43, "tools/call", { name: "witch_auto_step", arguments: { dryRun: false, label: "open map", denyKinds: ["navigation"] } });
+send(44, "tools/call", { name: "witch_no_mouse_audit", arguments: { includeCurrentState: true, includePolicyTests: true } });
 
-for (let id = 2; id <= 43; id++) {
+for (let id = 2; id <= 44; id++) {
   await waitForMessage(id);
 }
 child.kill();
@@ -477,8 +479,9 @@ const takeoverAudit = textResult(40);
 const bridgeLoadWatch = textResult(41);
 const restartAndWatchDenied = textResult(42);
 const policyDeniedAutoStep = textResult(43);
+const noMouseAudit = textResult(44);
 
-if (!capabilities.ok || capabilities.tools.length < 45) {
+if (!capabilities.ok || capabilities.tools.length < 46 || capabilities.noMouseDefault !== true || capabilities.noMouseMode?.enabledByDefault !== true) {
   throw new Error("capabilities did not describe the expanded tool set");
 }
 if (!runtimeDiagnostics.ok || runtimeDiagnostics.bridgeStatus?.data?.bridge !== "fake" || !Array.isArray(runtimeDiagnostics.modFiles) || runtimeDiagnostics.bridgeArtifactFreshness?.ok !== true) {
@@ -525,6 +528,9 @@ if (restartAndWatchDenied?.reason !== "restart_confirmation_required" || restart
 }
 if (policyDeniedAutoStep?.ok !== false || policyDeniedAutoStep?.reason !== "action_policy_denied" || !policyDeniedAutoStep?.policy?.deniedBy?.includes("denyKinds")) {
   throw new Error(`auto step did not enforce action policy ${JSON.stringify(policyDeniedAutoStep, null, 2)}`);
+}
+if (!noMouseAudit.ok || noMouseAudit.policyTests?.ok !== true || noMouseAudit.checks?.some(item => !item.ok)) {
+  throw new Error(`bad no-mouse audit ${JSON.stringify(noMouseAudit, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
   throw new Error(`bad bridge wait ${JSON.stringify(bridgeWait, null, 2)}`);
@@ -586,13 +592,13 @@ if (inputKey?.data?.command !== "input.key" || inputKey?.data?.params?.key !== "
 if (inputText?.data?.command !== "input.text" || inputText?.data?.params?.text !== "abc") {
   throw new Error(`bad input text ${JSON.stringify(inputText, null, 2)}`);
 }
-if (inputMouse?.data?.command !== "input.mouse" || inputMouse?.data?.params?.action !== "move") {
+if (inputMouse?.ok !== false || inputMouse?.reason !== "mouse_forbidden" || inputMouse?.command !== "input.mouse" || inputMouse?.noMouse !== true) {
   throw new Error(`bad input mouse ${JSON.stringify(inputMouse, null, 2)}`);
 }
 if (windowFocus?.data?.isForeground !== true) {
   throw new Error(`bad window focus ${JSON.stringify(windowFocus, null, 2)}`);
 }
-if (!inputBatch.ok || inputBatch.results?.[0]?.result?.plannedTool !== "witch_window_focus" || inputBatch.results?.[1]?.result?.skipped !== true || inputBatch.results?.[2]?.result?.plannedTool !== "witch_input_mouse" || inputBatch.results?.[3]?.result?.plannedTool !== "witch_screen_capture_wait") {
+if (inputBatch.ok !== false || inputBatch.results?.[0]?.result?.plannedTool !== "witch_window_focus" || inputBatch.results?.[1]?.result?.skipped !== true || inputBatch.results?.[2]?.result?.reason !== "mouse_forbidden" || inputBatch.results?.[3]?.result?.plannedTool !== "witch_screen_capture_wait") {
   throw new Error(`bad input batch dry run ${JSON.stringify(inputBatch, null, 2)}`);
 }
 if (!takeoverDryRun.ok || takeoverDryRun.dryRun !== true || takeoverDryRun.steps?.screenshot?.plannedTool !== "witch_screen_capture_wait" || takeoverDryRun.steps?.execution?.result?.skipped !== true) {

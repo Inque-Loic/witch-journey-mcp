@@ -61,4 +61,14 @@ Assert-Field ($capabilities.noMouseDefault -eq $true) "witch_capabilities did no
 Assert-Field ($capabilities.noMouseMode.enabledByDefault -eq $true) "witch_capabilities noMouseMode was not enabled by default" $capabilities
 Assert-Field (@($capabilities.noMouseMode.forbiddenCommands) -contains "input.mouse") "witch_capabilities did not list input.mouse as forbidden" $capabilities
 
+Write-Host "Checking no-mouse audit coverage..."
+$audit = Invoke-WitchMcpJson witch_no_mouse_audit @{ includeCurrentState = $true; includePolicyTests = $true }
+Assert-Field ($audit.ok -eq $true) "witch_no_mouse_audit did not return ok=true" $audit
+Assert-Field ($audit.policyTests.ok -eq $true) "witch_no_mouse_audit policy tests failed" $audit
+Assert-Field ($audit.checks | Where-Object { $_.name -eq "default_no_mouse_enabled" -and $_.ok -eq $true }) "witch_no_mouse_audit did not confirm default no-mouse mode" $audit
+Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "high_level_gameplay" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report high-level gameplay as no-mouse" $audit
+Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "ui_operations" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report UI operations as no-mouse" $audit
+Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "scene_operations" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report scene operations as no-mouse" $audit
+Assert-Field ($audit.operationFamilies | Where-Object { $_.name -eq "battle_card_operations" -and $_.noMouse -eq $true }) "witch_no_mouse_audit did not report battle card operations as no-mouse" $audit
+
 Write-Host "ok: no-mouse policy refuses OS mouse entry points"
