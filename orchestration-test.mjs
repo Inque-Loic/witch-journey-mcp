@@ -35,7 +35,7 @@ const bridge = http.createServer((request, response) => {
             LayoutSignature: "layout-test",
             Windows: [{ WindowName: "MainMenu", NodeId: "window-main", Visible: true, ActiveInHierarchy: true }],
             Nodes: [
-              { NodeId: "start", Label: "start journey", WindowName: "MainMenu", Clickable: true, SupportedActions: ["click", "submit", "scroll", "drag", "hover"] },
+              { NodeId: "start", Label: "start journey", WindowName: "MainMenu", Clickable: true, SupportedActions: ["click"], ScreenRect: { X: 1, Y: 2, Width: 120, Height: 40 }, PreferredClickPoint: { X: 60, Y: 20 } },
               { NodeId: "title", Label: "title", WindowName: "MainMenu", Clickable: false }
             ]
           }
@@ -63,7 +63,7 @@ const bridge = http.createServer((request, response) => {
                 HasPointerHandler: true,
                 Interactive: true,
                 ComponentTypes: ["SceneItem"],
-                SupportedActions: ["click", "hover", "drag", "scroll"],
+                SupportedActions: ["click"],
                 ScreenPoint: { X: 10, Y: 20 },
                 ScreenRect: { X: 1, Y: 2, Width: 30, Height: 40 }
               }

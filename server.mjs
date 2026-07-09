@@ -4884,23 +4884,35 @@ function isSceneOperationTarget(item, args) {
 
 function uiActionsForNode(item) {
   const actions = normalizedActions(item);
-  if (actions.length > 0) return actions;
-  if (fieldValue(item, "Clickable") === true) return ["click"];
-  if (isEditableUiNode(item)) return ["set_text"];
-  return [];
+  const inferred = [];
+  if (fieldValue(item, "Clickable") === true) inferred.push("click", "submit", "hover");
+  if (isEditableUiNode(item)) inferred.push("set_text", "submit");
+  if (hasUiRect(item)) inferred.push("hover", "drag", "scroll");
+  return mergeActionNames(actions, inferred);
 }
 
 function sceneActionsForObject(item) {
   const actions = normalizedActions(item);
-  if (actions.length > 0) return actions;
-  if (fieldValue(item, "Interactive") !== false) return ["click"];
-  return [];
+  const inferred = [];
+  if (fieldValue(item, "Interactive") !== false) inferred.push("click", "hover");
+  if (fieldValue(item, "HasCollider3D") === true || fieldValue(item, "HasCollider2D") === true || fieldValue(item, "HasPointerHandler") === true) {
+    inferred.push("drag", "scroll");
+  }
+  return mergeActionNames(actions, inferred);
 }
 
 function normalizedActions(item) {
   const actions = fieldValue(item, "SupportedActions") ?? [];
   if (!Array.isArray(actions)) return [];
   return [...new Set(actions.map(action => normalizeActionName(action)).filter(Boolean))];
+}
+
+function mergeActionNames(primary, secondary) {
+  return [...new Set([...(primary || []), ...(secondary || [])].map(action => normalizeActionName(action)).filter(Boolean))];
+}
+
+function hasUiRect(item) {
+  return fieldValue(item, "ScreenRect") != null || fieldValue(item, "PreferredClickPoint") != null;
 }
 
 function isEditableUiNode(item) {
@@ -4946,6 +4958,8 @@ function placeholderUiArgs(action) {
   switch (normalizeActionName(action)) {
     case "set_text":
       return { text: "" };
+    case "submit":
+      return { submit: true };
     case "drag":
       return { targetSelector: undefined, targetPoint: undefined };
     case "scroll":
