@@ -15,6 +15,18 @@
 
 默认启用无鼠标模式：MCP 会拒绝 `witch_input_mouse` 和底层 `input.mouse`，自动接管会优先使用游戏合法动作、UI 自动化、场景自动化和运行时调用。
 
+## 最新改动说明
+
+当前版本已经补齐“完全无鼠标接管”的关键路径，并在真实运行中的游戏进程里完成严格证明检查：
+
+- `witch_control_map` 会把当前可用的合法动作、UI 动作、场景对象动作、战斗动作和少量白名单 `runtime_action` 汇总成统一操作表。
+- `witch_execute_operation` 可以按 `operationId`、`family/action`、`label` 或 `index` 执行操作，默认 `dryRun:true`，只有显式传入 `dryRun:false` 才会真实推进游戏。
+- 新增并验证了地图和战斗管理器上的保守运行时动作，例如显示地图选择、地图推进、战斗开始/结束回合检查等；这些动作默认不标记为 ready，真实执行需要 `confirm:"CALL_WITCH_COMPONENT_METHOD"`。
+- 当运行中的旧桥接 DLL 还不支持部分新命令时，MCP 会优先通过 runtime fallback 完成 UI、场景、合法动作和战斗观察/操作，而不是退回到 OS 鼠标。
+- `prove-no-mouse-takeover.ps1 -Status` 已在实机战斗状态下返回 `strict proof complete: True`，缺失证明项为 `0`；现场样本覆盖 UI、合法动作、场景对象、战斗卡牌/目标和运行时动作。
+
+这表示本仓库的目标不是“模拟鼠标点屏幕”，而是让支持 MCP 的客户端通过游戏内对象和自动化接口接管操作。是否能宣称某次安装环境已经完整可接管，应以该机器上 `prove-no-mouse-takeover.ps1 -Status` 或 `witch_no_mouse_completion_audit` 的结果为准。
+
 ## 安装
 
 1. 把 `bridge-mod/` 复制到游戏 Mod 目录，并把复制后的文件夹命名为 `CodexMcpBridge`。根据你的游戏安装情况，复制到下面一个或两个位置：
