@@ -40,6 +40,7 @@ jobs:
           node --check .\assertion-tools-test.mjs
           node --check .\state-proof-ui-filter-test.mjs
           node --check .\compact-story-tools-test.mjs
+          node --check .\map-placement-control-test.mjs
           node --check .\verify-end-to-end-fake.mjs
           python -m py_compile .\mcp-call.py .\config-launch-test.py
           powershell -NoProfile -ExecutionPolicy Bypass -File .\verify-script-syntax.ps1

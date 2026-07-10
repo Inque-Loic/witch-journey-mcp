@@ -10,7 +10,7 @@
 
 ## 工具数量
 
-当前 MCP server 暴露 **71 个工具**。
+当前 MCP server 暴露 **73 个工具**。
 
 请以运行时结果为准：
 
@@ -34,5 +34,6 @@ witch_capabilities
 - `includeHidden:false` 会在 MCP 层再次过滤隐藏 UI，奖励/确认/继续类按钮会通过 `intent` 和 `recommendedOperations` 更清晰地暴露。
 - 新增 `witch_event_choose_option`、`witch_story_map_snapshot`、`witch_log_tail`、`witch_screenshot`、`witch_map_select_node`。
 - `witch_state_summary` / `witch_ui_interact` 支持 `compact` / `fields`，`witch_runtime_component_call` 支持 `waitFor` 状态变化等待。
+- 新增 `witch_map_place_card`、`witch_map_fill_path`，用于地图牌到路径槽的高层语义放置；`witch_execute_operation` 标签选择优先 click/submit 而不是 hover。
 - `package.json`、MCP `serverInfo.version`、`witch_capabilities.serverVersion` 与桥接 Mod 版本同步为 `0.9.0`。
 - 默认无鼠标模式仍然启用，`witch_input_mouse` 和底层 `input.mouse` 默认会被拒绝。

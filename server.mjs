@@ -675,6 +675,44 @@ const tools = [
     }
   },
   {
+    name: "witch_map_place_card",
+    description: "Place a visible map card into a path/slot by card label/index/id and slot index/id/label. Defaults to dry-run and verifies state change when executed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cardLabel: { type: "string" },
+        cardText: { type: "string" },
+        cardId: { type: "string" },
+        cardIndex: { type: "integer" },
+        slotLabel: { type: "string" },
+        slotId: { type: "string" },
+        slotIndex: { type: "integer" },
+        contains: { type: "boolean", default: true },
+        dryRun: { type: "boolean", default: true },
+        timeoutMs: { type: "integer", default: 3000 },
+        includePostSummary: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_map_fill_path",
+    description: "Fill the next visible map path slot with a visible map card candidate. Defaults to dry-run and returns chosen card/slot summaries.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cardLabel: { type: "string" },
+        cardIndex: { type: "integer" },
+        slotIndex: { type: "integer" },
+        contains: { type: "boolean", default: true },
+        dryRun: { type: "boolean", default: true },
+        timeoutMs: { type: "integer", default: 3000 },
+        includePostSummary: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_execute_operation",
     description: "Find one current no-mouse operation from witch_control_map by id, family/action, label, or index, then optionally execute its mapped MCP call.",
     inputSchema: {
@@ -1702,6 +1740,12 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_map_select_node") {
       return toolResult(id, await selectMapNode(args));
+    }
+    if (toolName === "witch_map_place_card") {
+      return toolResult(id, await placeMapCard(args));
+    }
+    if (toolName === "witch_map_fill_path") {
+      return toolResult(id, await fillMapPath(args));
     }
     if (toolName === "witch_execute_operation") {
       return toolResult(id, await executeOperation(args));
@@ -5317,13 +5361,26 @@ function normalizeUiSnapshotVisibility(result, params) {
 }
 
 async function interactUi(args) {
-  const direct = await safeCallBridge("ui.interact", args || {});
+  const interactArgs = normalizeUiInteractArgs(args || {});
+  const direct = await safeCallBridge("ui.interact", interactArgs);
   if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "ui.interact")) {
-    return compactUiInteractResult(direct, args || {});
+    return compactUiInteractResult(direct, interactArgs);
   }
 
-  const fallback = await invokeAutomationStaticFallback("ui.interact", "Witch.UI.Automation.RuntimeUiAutomationService", "InteractAsync", [args || {}], direct);
-  return compactUiInteractResult(fallback, args || {});
+  const fallback = await invokeAutomationStaticFallback("ui.interact", "Witch.UI.Automation.RuntimeUiAutomationService", "InteractAsync", [interactArgs], direct);
+  return compactUiInteractResult(fallback, interactArgs);
+}
+
+function normalizeUiInteractArgs(args) {
+  const result = { ...(args || {}) };
+  if (normalizeActionName(result.action) === "drag") {
+    const button = String(result.button || "left");
+    if (/leftbutton|mouse\/left|primary/i.test(button)) result.button = "left";
+    else if (/rightbutton|mouse\/right|secondary/i.test(button)) result.button = "right";
+    else if (/middlebutton|mouse\/middle/i.test(button)) result.button = "middle";
+    else result.button = button || "left";
+  }
+  return result;
 }
 
 function compactUiInteractResult(result, args) {
@@ -6265,6 +6322,81 @@ async function selectMapNode(args) {
   return executeUiCandidate("map_node", selected, args || {});
 }
 
+async function fillMapPath(args) {
+  return placeMapCard({
+    ...args,
+    cardIndex: Number.isInteger(args?.cardIndex) ? args.cardIndex : 0,
+    slotIndex: Number.isInteger(args?.slotIndex) ? args.slotIndex : 0
+  });
+}
+
+async function placeMapCard(args) {
+  const candidates = await collectMapPlacementCandidates();
+  const card = selectOptionCandidate(candidates.cards, {
+    index: args?.cardIndex,
+    text: args?.cardLabel ?? args?.cardText ?? args?.cardId,
+    nodeId: args?.cardId,
+    contains: args?.contains !== false
+  });
+  const slot = selectOptionCandidate(candidates.slots, {
+    index: args?.slotIndex,
+    text: args?.slotLabel ?? args?.slotId,
+    nodeId: args?.slotId,
+    contains: args?.contains !== false
+  });
+  const dryRun = args?.dryRun !== false;
+  if (!card || !slot) {
+    return {
+      ok: false,
+      dryRun,
+      reason: !card ? "map_card_not_found" : "map_slot_not_found",
+      selector: {
+        cardLabel: args?.cardLabel ?? args?.cardText ?? null,
+        cardId: args?.cardId ?? null,
+        cardIndex: Number.isInteger(args?.cardIndex) ? args.cardIndex : null,
+        slotLabel: args?.slotLabel ?? null,
+        slotId: args?.slotId ?? null,
+        slotIndex: Number.isInteger(args?.slotIndex) ? args.slotIndex : null
+      },
+      candidates
+    };
+  }
+  const plannedCalls = [
+    { tool: "witch_ui_interact", arguments: { action: "click", selector: card.selector, includePostSnapshot: false, compact: true } },
+    { tool: "witch_ui_interact", arguments: { action: "click", selector: slot.selector, includePostSnapshot: false, compact: true } }
+  ];
+  const response = {
+    ok: true,
+    dryRun,
+    selectedCard: card,
+    selectedSlot: slot,
+    plannedCalls,
+    placementMode: "click_card_then_slot",
+    note: "This avoids low-level drag and verifies state change after the semantic placement attempt."
+  };
+  if (dryRun) {
+    response.result = { ok: true, skipped: true, plannedCalls };
+    return response;
+  }
+  const before = await collectOperationStateFingerprint({ includeHidden: false, onlyInteractive: true });
+  const results = [];
+  for (const call of plannedCalls) {
+    results.push(await interactUi(call.arguments));
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  response.results = results;
+  const timeoutMs = Math.max(0, Math.min(10000, Number(args?.timeoutMs ?? 3000)));
+  response.wait = await waitForStateChange(before, { stateChanged: true, timeoutMs, pollMs: 150 });
+  response.ok = results.every(item => item?.ok !== false) && response.wait?.changed === true;
+  if (!response.ok && results.every(item => item?.ok !== false)) {
+    response.reason = "map_place_unverified_no_state_change";
+  }
+  if (args?.includePostSummary === true) {
+    response.postSummary = await collectStoryMapSnapshot({ includeHidden: false, onlyInteractive: false, includeHookLog: false, maxOptions: 20 });
+  }
+  return response;
+}
+
 async function executeUiCandidate(kind, selected, args) {
   const dryRun = args?.dryRun !== false;
   const call = {
@@ -6440,6 +6572,37 @@ async function collectMapNodeCandidates(args) {
   const snapshot = await collectUiSnapshot({ includeHidden: false });
   const nodes = visibleUiNodes(snapshot.data || snapshot, { includeHidden: false, onlyInteractive: true });
   return collectOptionCandidatesFromNodes(nodes, { eventOnly: false, mapOnly: true });
+}
+
+async function collectMapPlacementCandidates() {
+  const snapshot = await collectUiSnapshot({ includeHidden: false });
+  const nodes = visibleUiNodes(snapshot.data || snapshot, { includeHidden: false, onlyInteractive: true });
+  const mapNodes = collectOptionCandidatesFromNodes(nodes, { eventOnly: false, mapOnly: true });
+  const cards = [];
+  const slots = [];
+  for (const candidate of mapNodes) {
+    const text = normalizeText([candidate.label, candidate.text, candidate.nodeId, candidate.windowName, candidate.transformPath, ...(candidate.componentTypes || [])].filter(Boolean).join(" "));
+    const looksSlot = /(slot|path|route|target|drop|empty|placeholder|top|上方|路径|路线|槽|空|放置|目标)/i.test(text);
+    const looksCard = /(card|mapitem|node|bottom|hand|select|option|下方|卡|牌|地图牌|节点|可选)/i.test(text) && !looksSlot;
+    if (looksSlot) {
+      slots.push({ ...candidate, index: slots.length, role: "slot" });
+    } else if (looksCard) {
+      cards.push({ ...candidate, index: cards.length, role: "card" });
+    }
+  }
+  if (cards.length === 0) {
+    mapNodes.forEach(item => cards.push({ ...item, index: cards.length, role: "card_candidate" }));
+  }
+  if (slots.length === 0) {
+    mapNodes
+      .filter(item => !cards.some(card => card.nodeId === item.nodeId))
+      .forEach(item => slots.push({ ...item, index: slots.length, role: "slot_candidate" }));
+  }
+  return {
+    cards,
+    slots,
+    allMapNodes: mapNodes
+  };
 }
 
 function collectOptionCandidatesFromNodes(nodes, options) {
@@ -7762,7 +7925,20 @@ function selectOperation(operations, selector) {
   if (Number.isInteger(selector.index)) {
     return candidates[selector.index] || null;
   }
+  candidates = candidates.slice().sort((a, b) => selectedOperationRank(b) - selectedOperationRank(a));
   return candidates[0] || null;
+}
+
+function selectedOperationRank(operation) {
+  let score = controlOperationRank(operation);
+  const action = normalizeActionName(operation?.action || "");
+  if (action === "click") score += 120;
+  if (action === "submit") score += 110;
+  if (action === "perform") score += 100;
+  if (action === "hover") score -= 120;
+  if (action === "drag") score -= 60;
+  if (action === "scroll") score -= 80;
+  return score;
 }
 
 function operationSelectorSummary(selector) {
@@ -8560,6 +8736,10 @@ async function executeRecommendedCall(call, options) {
       return captureScreenshotSummary(args);
     case "witch_map_select_node":
       return selectMapNode(args);
+    case "witch_map_place_card":
+      return placeMapCard(args);
+    case "witch_map_fill_path":
+      return fillMapPath(args);
     default:
       return { ok: false, error: "Refusing to execute unsupported planned tool: " + call.tool, call };
   }
@@ -8662,6 +8842,10 @@ async function executeBatchStep(step, options) {
       return captureScreenshotSummary(args);
     case "witch_map_select_node":
       return selectMapNode({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
+    case "witch_map_place_card":
+      return placeMapCard({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
+    case "witch_map_fill_path":
+      return fillMapPath({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_execute_operation":
       return executeOperation({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_battle_snapshot":
