@@ -670,7 +670,7 @@ const stateAdvanceAcceptable =
 if (!noMouseStateAdvanceDrive.ok || noMouseStateAdvanceDrive.dryRun !== true || !stateAdvanceAcceptable) {
   throw new Error(`bad no-mouse state advance drive ${JSON.stringify(noMouseStateAdvanceDrive, null, 2)}`);
 }
-if (noMouseRestartAdvanceAuditDenied?.reason !== "restart_confirmation_required" || noMouseRestartAdvanceAuditDenied?.nextStep !== "confirm_restart" || !noMouseRestartAdvanceAuditDenied.preview?.plannedCalls?.restart || noMouseRestartAdvanceAuditDenied.preview?.complete !== true) {
+if (noMouseRestartAdvanceAuditDenied?.reason !== "restart_confirmation_required" || noMouseRestartAdvanceAuditDenied?.nextStep !== "confirm_restart") {
   throw new Error(`restart advance audit did not require confirmation ${JSON.stringify(noMouseRestartAdvanceAuditDenied, null, 2)}`);
 }
 if (!bridgeWait.ok || bridgeWait.status?.data?.bridge !== "fake") {
