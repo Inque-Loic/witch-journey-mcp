@@ -25,6 +25,7 @@
 - 新增只读断言工具 `witch_assert_route`、`witch_assert_ui_text`、`witch_assert_event_id`、`witch_assert_forbidden_text`，方便写“进入某张地图后必须出现/不得出现哪些文本或事件 id”的回归检查。
 - 收紧地图推进验证：`map_continue` / `CmdNextMap` / `map_next` 这类操作执行后必须能证明 UI、合法动作、event/map 候选或布局指纹发生变化；如果底层组件调用返回 success 但状态没变，MCP 会返回 `operation_unverified_no_state_change`，不再把它当作真正成功。
 - 收紧 UI 输出：`includeHidden:false` 时 MCP 会在本层再次过滤隐藏窗口/节点，避免隐藏归档、后台窗口或旧 UI 文本污染断言；`witch_control_map` 也会把奖励、确认、继续类可见按钮标成更明确的 `intent` 并放进 `recommendedOperations`。
+- 新增高优先级轻量入口：`witch_event_choose_option`、`witch_story_map_snapshot`、`witch_log_tail`、`witch_screenshot`、`witch_map_select_node`；并为 `witch_state_summary` / `witch_ui_interact` 增加 `compact` / `fields` 输出，为 `witch_runtime_component_call` 增加 `waitFor` 状态变化等待。
 - `package.json`、MCP `serverInfo.version` 和 `witch_capabilities.serverVersion` 已同步到 `0.9.0`，与当前桥接 Mod 版本一致；仓库状态请参考 `STATUS.md` 和 `witch_capabilities` 实际返回。
 - 新增并验证了地图和战斗管理器上的保守运行时动作，例如显示地图选择、地图推进、战斗开始/结束回合检查等；这些动作默认不标记为 ready，真实执行需要 `confirm:"CALL_WITCH_COMPONENT_METHOD"`。
 - 当运行中的旧桥接 DLL 还不支持部分新命令时，MCP 会优先通过 runtime fallback 完成 UI、场景、合法动作和战斗观察/操作，而不是退回到 OS 鼠标。
@@ -91,7 +92,7 @@
 
 ## 工具能力
 
-当前 MCP server 暴露 66 个工具，覆盖：
+当前 MCP server 暴露 71 个工具，覆盖：
 
 - 桥接状态检查、等待、重启编排
 - 本地运行时诊断、Mod 文件检查、桥文件新旧检查
@@ -105,6 +106,7 @@
 - 事件/地图路由追踪，例如 `witch_event_route_trace` 会把当前 `EventUI` / `MapSelectUI`、合法动作、`MapManager` / `NormalMapManager` / `MapItem` / `EventUI` 运行时对象、可读组件字段和 hook 日志摘要聚合起来，输出候选 event id、map node、route 步骤和置信度，用来定位“点了这个地图卡最后到底走到哪个事件”
 - 只读断言工具，例如 `witch_assert_route`、`witch_assert_ui_text`、`witch_assert_event_id`、`witch_assert_forbidden_text`，用于自动判断当前状态是否出现期望 UI 文本/事件 id，或是否误出现禁用文本
 - 状态推进防误报：地图继续/下一地图类操作需要前后状态指纹变化，奖励/确认/继续类 UI 会在 `recommendedOperations` 里优先浮出
+- 专用轻量操作/观察入口：`witch_event_choose_option`、`witch_story_map_snapshot`、`witch_log_tail`、`witch_screenshot`、`witch_map_select_node`，以及 `compact:true` / `fields:[...]` 摘要输出
 - 观察-规划-执行辅助，例如 `witch_control_map`、`witch_execute_operation`、`witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
 - 无鼠标能力审计、运行时覆盖矩阵、跨状态证据记录、操作级探针、ready 操作批量采证、证据驱动循环、证据机会监听、确认式状态推进、确认式重启后采证、完整证明编排、证据缺口计划和严格完成度审计，例如 `witch_no_mouse_audit`、`witch_no_mouse_coverage`、`witch_no_mouse_record_evidence`、`witch_no_mouse_probe_operation`、`witch_no_mouse_collect_ready_evidence`、`witch_no_mouse_evidence_drive`、`witch_no_mouse_state_advance_drive`、`witch_no_mouse_watch_evidence`、`witch_no_mouse_restart_collect_audit`、`witch_no_mouse_restart_advance_audit`、`witch_no_mouse_evidence_plan`、`witch_no_mouse_completion_audit`
 

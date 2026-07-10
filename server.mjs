@@ -596,6 +596,85 @@ const tools = [
     }
   },
   {
+    name: "witch_event_choose_option",
+    description: "Choose a currently visible/interactable EventUI option by index, text, label, or nodeId. Defaults to dry-run and avoids hidden/disabled text.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        index: { type: "integer" },
+        text: { type: "string" },
+        label: { type: "string" },
+        nodeId: { type: "string" },
+        contains: { type: "boolean", default: true },
+        dryRun: { type: "boolean", default: true },
+        includePostSummary: { type: "boolean", default: true },
+        timeoutMs: { type: "integer", default: 3000 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_story_map_snapshot",
+    description: "Return a compact current story/map snapshot: current window, map/event titles, candidate event/map/node ids, options, and transition hints.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: false },
+        maxOptions: { type: "integer", default: 20 },
+        includeHookLog: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_log_tail",
+    description: "Read the correct MeowAlive Player.log tail, optionally filtering lines by pattern.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pattern: { type: "string" },
+        lines: { type: "integer", default: 120 },
+        caseSensitive: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_screenshot",
+    description: "Capture the current game window and return the screenshot path plus optional compact visible UI text/buttons.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        directory: { type: "string" },
+        timeoutMs: { type: "integer", default: 5000 },
+        pollMs: { type: "integer", default: 100 },
+        includeUiText: { type: "boolean", default: true },
+        maxUiText: { type: "integer", default: 40 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_map_select_node",
+    description: "Select a visible map node/card by index, id, label, or text and return the selected node summary. Defaults to dry-run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        index: { type: "integer" },
+        id: { type: "string" },
+        label: { type: "string" },
+        text: { type: "string" },
+        contains: { type: "boolean", default: true },
+        dryRun: { type: "boolean", default: true },
+        includePostSummary: { type: "boolean", default: true },
+        timeoutMs: { type: "integer", default: 3000 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_execute_operation",
     description: "Find one current no-mouse operation from witch_control_map by id, family/action, label, or index, then optionally execute its mapped MCP call.",
     inputSchema: {
@@ -634,6 +713,8 @@ const tools = [
         maxUiNodes: { type: "integer", default: 20 },
         maxSceneObjects: { type: "integer", default: 20 },
         maxActions: { type: "integer", default: 20 },
+        compact: { type: "boolean", default: false },
+        fields: { type: "array", items: { type: "string" } },
         preferKinds: { type: "array", items: { type: "string" } },
         preferLabels: { type: "array", items: { type: "string" } },
         avoidKinds: { type: "array", items: { type: "string" } },
@@ -841,7 +922,9 @@ const tools = [
         deltaY: { type: "number" },
         steps: { type: "integer" },
         framesPerStep: { type: "integer" },
-        includePostSnapshot: { type: "boolean" }
+        includePostSnapshot: { type: "boolean" },
+        compact: { type: "boolean", default: false },
+        fields: { type: "array", items: { type: "string" } }
       },
       required: ["action"],
       additionalProperties: false,
@@ -1145,6 +1228,17 @@ const tools = [
         includeInactive: { type: "boolean", default: true },
         dryRun: { type: "boolean", default: true },
         confirm: { type: "string", description: "Required as CALL_WITCH_COMPONENT_METHOD when dryRun is false." },
+        waitFor: {
+          type: "object",
+          properties: {
+            windowChanged: { type: "boolean" },
+            layoutChanged: { type: "boolean" },
+            stateChanged: { type: "boolean" },
+            timeoutMs: { type: "integer", default: 3000 },
+            pollMs: { type: "integer", default: 150 }
+          },
+          additionalProperties: false
+        },
         maxStringLength: { type: "integer", default: 500 }
       },
       required: ["componentType", "methodName"],
@@ -1594,6 +1688,21 @@ async function handleRequest(request) {
     if (toolName === "witch_assert_forbidden_text") {
       return toolResult(id, await assertForbiddenText(args));
     }
+    if (toolName === "witch_event_choose_option") {
+      return toolResult(id, await chooseEventOption(args));
+    }
+    if (toolName === "witch_story_map_snapshot") {
+      return toolResult(id, await collectStoryMapSnapshot(args));
+    }
+    if (toolName === "witch_log_tail") {
+      return toolResult(id, await logTail(args));
+    }
+    if (toolName === "witch_screenshot") {
+      return toolResult(id, await captureScreenshotSummary(args));
+    }
+    if (toolName === "witch_map_select_node") {
+      return toolResult(id, await selectMapNode(args));
+    }
     if (toolName === "witch_execute_operation") {
       return toolResult(id, await executeOperation(args));
     }
@@ -1662,6 +1771,9 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_screen_capture_wait") {
       return toolResult(id, await captureAndWait(args));
+    }
+    if (toolName === "witch_runtime_component_call") {
+      return toolResult(id, await executeRuntimeComponentCall(args));
     }
     const mapped = toolToBridge(toolName, args);
     const result = await callBridgeWithLocalFallback(mapped.command, mapped.params);
@@ -5207,10 +5319,43 @@ function normalizeUiSnapshotVisibility(result, params) {
 async function interactUi(args) {
   const direct = await safeCallBridge("ui.interact", args || {});
   if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "ui.interact")) {
-    return direct;
+    return compactUiInteractResult(direct, args || {});
   }
 
-  return invokeAutomationStaticFallback("ui.interact", "Witch.UI.Automation.RuntimeUiAutomationService", "InteractAsync", [args || {}], direct);
+  const fallback = await invokeAutomationStaticFallback("ui.interact", "Witch.UI.Automation.RuntimeUiAutomationService", "InteractAsync", [args || {}], direct);
+  return compactUiInteractResult(fallback, args || {});
+}
+
+function compactUiInteractResult(result, args) {
+  if (args?.compact !== true && !Array.isArray(args?.fields)) return result;
+  const fields = Array.isArray(args?.fields) && args.fields.length > 0
+    ? new Set(args.fields)
+    : new Set(["ok", "action", "selector", "matched", "postSummary", "error", "reason"]);
+  const compact = {};
+  for (const key of ["ok", "action", "selector", "matched", "error", "reason", "message", "source", "command"]) {
+    if (fields.has(key) && result?.[key] !== undefined) compact[key] = result[key];
+  }
+  const postSnapshot = result?.postSnapshot || result?.PostSnapshot || result?.data?.postSnapshot || result?.data?.PostSnapshot;
+  if ((fields.has("postSummary") || fields.has("activeWindows") || fields.has("clickables")) && postSnapshot) {
+    const ui = postSnapshot.data || postSnapshot;
+    compact.postSummary = {
+      activeWindows: visibleUiWindows(ui).map(item => item.windowName).filter(Boolean),
+      clickables: visibleUiNodes(ui, { includeHidden: false, onlyInteractive: true }).slice(0, 20).map(item => {
+        const node = summarizeUiNode(item);
+        return {
+          label: node.label || node.text || null,
+          nodeId: node.nodeId,
+          windowName: node.windowName,
+          transformPath: node.transformPath
+        };
+      })
+    };
+  }
+  if (Object.keys(compact).length === 0) {
+    compact.ok = result?.ok !== false;
+    compact.rawKeys = result && typeof result === "object" ? Object.keys(result).slice(0, 20) : [];
+  }
+  return compact;
 }
 
 async function waitForUiOnce(args) {
@@ -6080,6 +6225,322 @@ async function assertForbiddenText(args) {
   };
 }
 
+async function chooseEventOption(args) {
+  const options = await collectEventOptionCandidates({ includeHidden: false, onlyInteractive: true });
+  const selected = selectOptionCandidate(options, {
+    index: args?.index,
+    text: args?.text ?? args?.label,
+    nodeId: args?.nodeId,
+    contains: args?.contains !== false
+  });
+  if (!selected) {
+    return {
+      ok: false,
+      dryRun: args?.dryRun !== false,
+      reason: "event_option_not_found",
+      selector: { index: args?.index ?? null, text: args?.text ?? args?.label ?? null, nodeId: args?.nodeId ?? null },
+      availableOptions: options
+    };
+  }
+  return executeUiCandidate("event_option", selected, args || {});
+}
+
+async function selectMapNode(args) {
+  const options = await collectMapNodeCandidates({ includeHidden: false, onlyInteractive: true });
+  const selected = selectOptionCandidate(options, {
+    index: args?.index,
+    text: args?.text ?? args?.label ?? args?.id,
+    nodeId: args?.id,
+    contains: args?.contains !== false
+  });
+  if (!selected) {
+    return {
+      ok: false,
+      dryRun: args?.dryRun !== false,
+      reason: "map_node_not_found",
+      selector: { index: args?.index ?? null, id: args?.id ?? null, label: args?.label ?? null, text: args?.text ?? null },
+      availableNodes: options
+    };
+  }
+  return executeUiCandidate("map_node", selected, args || {});
+}
+
+async function executeUiCandidate(kind, selected, args) {
+  const dryRun = args?.dryRun !== false;
+  const call = {
+    tool: "witch_ui_interact",
+    arguments: {
+      action: "click",
+      selector: selected.selector,
+      includePostSnapshot: false,
+      compact: true
+    }
+  };
+  const response = {
+    ok: true,
+    kind,
+    dryRun,
+    selected,
+    plannedCall: call
+  };
+  if (dryRun) {
+    response.result = { ok: true, skipped: true, plannedTool: call.tool, arguments: call.arguments };
+    return response;
+  }
+  const before = await collectOperationStateFingerprint({ includeHidden: false, onlyInteractive: true });
+  response.result = await interactUi(call.arguments);
+  const timeoutMs = Math.max(0, Math.min(10000, Number(args?.timeoutMs ?? 3000)));
+  response.wait = await waitForStateChange(before, { stateChanged: true, timeoutMs, pollMs: 150 });
+  response.ok = response.result?.ok !== false && response.wait?.changed === true;
+  if (!response.ok && response.result?.ok !== false) {
+    response.reason = "ui_choice_unverified_no_state_change";
+  }
+  if (args?.includePostSummary !== false) {
+    response.postSummary = await collectStoryMapSnapshot({ includeHidden: false, onlyInteractive: false, includeHookLog: false });
+  }
+  return response;
+}
+
+async function collectStoryMapSnapshot(args) {
+  const trace = await collectEventRouteTrace({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive === true,
+    includeComponentDetails: true,
+    includeHookLog: !!args?.includeHookLog,
+    maxUiNodes: 80,
+    maxActions: 80,
+    maxRuntimeObjects: 30,
+    maxMembersPerComponent: 50
+  });
+  const snapshot = await collectGameSnapshot({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive === true,
+    includeUi: true,
+    includeScene: false,
+    includeBattle: false,
+    includeLegalActions: true
+  });
+  const uiData = snapshot.ui?.data || snapshot.ui || {};
+  const activeWindows = visibleUiWindows(uiData);
+  const visibleNodes = visibleUiNodes(uiData, { includeHidden: !!args?.includeHidden, onlyInteractive: false });
+  const options = collectOptionCandidatesFromNodes(visibleNodes, { eventOnly: false, mapOnly: false })
+    .slice(0, limit(args?.maxOptions, 20));
+  const allTexts = visibleNodes
+    .flatMap(node => [fieldValue(node, "Label"), fieldValue(node, "Text")])
+    .filter(Boolean)
+    .map(String);
+  const fields = routeFieldsByName(trace.componentFields || []);
+  const result = {
+    ok: trace.ok === true || snapshot.ok === true,
+    capturedAtUtc: new Date().toISOString(),
+    currentWindow: activeWindows[0]?.windowName || null,
+    activeWindows: activeWindows.map(item => item.windowName).filter(Boolean),
+    mapTitle: firstPatternText(allTexts, /(map|地图|区域|地点|旅途|路线)/i),
+    eventTitle: firstPatternText(allTexts, /(event|事件|选择|遭遇|剧情|回声|档案|幕)/i),
+    eventId: firstValue([fields.eventId, fields.currentEventId, trace.eventCandidates?.[0]?.value]),
+    mapId: firstValue([fields.mapId, fields.currentMapId, trace.mapCandidates?.find(item => item.kind === "map_id")?.value]),
+    currentNodeId: firstValue([fields.currentNodeId, fields.currentMapNodeId, fields.nodeId, trace.mapCandidates?.find(item => item.kind === "map_node")?.value]),
+    currentRoomType: firstValue([fields.currentRoomType, fields.roomType, fields.type]),
+    availableOptions: options,
+    isTransitioning: inferTransitioning(activeWindows, allTexts, trace),
+    routeConfidence: trace.confidence,
+    route: trace.route,
+    snapshotSources: {
+      ui: snapshot.ui?.ok !== false,
+      legalActions: snapshot.legalActions?.ok !== false,
+      routeTrace: trace.ok === true
+    }
+  };
+  result.titles = {
+    all: [...new Set(allTexts)].slice(0, 30)
+  };
+  return result;
+}
+
+async function logTail(args) {
+  const info = await statInfo(PLAYER_LOG_PATH);
+  if (!info.exists) {
+    return {
+      ok: false,
+      path: PLAYER_LOG_PATH,
+      exists: false,
+      reason: "player_log_not_found",
+      error: info.error || null
+    };
+  }
+  try {
+    const text = await fs.readFile(PLAYER_LOG_PATH, "utf8");
+    const allLines = text.split(/\r?\n/).filter(Boolean);
+    const maxLines = Math.max(1, Math.min(2000, Number(args?.lines ?? 120)));
+    let lines = allLines.slice(-Math.max(maxLines, 1));
+    const pattern = String(args?.pattern || "");
+    if (pattern) {
+      const flags = args?.caseSensitive ? "" : "i";
+      let regex = null;
+      try {
+        regex = new RegExp(pattern, flags);
+      } catch {
+        regex = null;
+      }
+      lines = allLines.filter(line => regex ? regex.test(line) : textMatches(line, pattern, { caseSensitive: !!args?.caseSensitive })).slice(-maxLines);
+    }
+    return {
+      ok: true,
+      path: PLAYER_LOG_PATH,
+      exists: true,
+      sizeBytes: info.sizeBytes,
+      modifiedAtUtc: info.modifiedAtUtc,
+      pattern: pattern || null,
+      totalLines: allLines.length,
+      returnedLines: lines.length,
+      lines
+    };
+  } catch (error) {
+    return { ok: false, path: PLAYER_LOG_PATH, exists: true, reason: "player_log_read_failed", error: String(error?.message || error) };
+  }
+}
+
+async function captureScreenshotSummary(args) {
+  const capture = await captureAndWait({
+    path: args?.path,
+    directory: args?.directory,
+    timeoutMs: args?.timeoutMs ?? 5000,
+    pollMs: args?.pollMs ?? 100
+  });
+  const result = {
+    ...capture,
+    screenshotPath: capture.fullPath || capture.path || capture.data?.path || null
+  };
+  if (args?.includeUiText !== false) {
+    const snapshot = await collectStoryMapSnapshot({
+      includeHidden: false,
+      onlyInteractive: false,
+      includeHookLog: false,
+      maxOptions: limit(args?.maxUiText, 40)
+    });
+    result.ui = {
+      currentWindow: snapshot.currentWindow,
+      activeWindows: snapshot.activeWindows,
+      mapTitle: snapshot.mapTitle,
+      eventTitle: snapshot.eventTitle,
+      availableOptions: snapshot.availableOptions,
+      titles: snapshot.titles?.all?.slice(0, limit(args?.maxUiText, 40)) || []
+    };
+  }
+  return result;
+}
+
+async function collectEventOptionCandidates(args) {
+  const snapshot = await collectUiSnapshot({ includeHidden: false });
+  const nodes = visibleUiNodes(snapshot.data || snapshot, { includeHidden: false, onlyInteractive: true });
+  return collectOptionCandidatesFromNodes(nodes, { eventOnly: true, mapOnly: false });
+}
+
+async function collectMapNodeCandidates(args) {
+  const snapshot = await collectUiSnapshot({ includeHidden: false });
+  const nodes = visibleUiNodes(snapshot.data || snapshot, { includeHidden: false, onlyInteractive: true });
+  return collectOptionCandidatesFromNodes(nodes, { eventOnly: false, mapOnly: true });
+}
+
+function collectOptionCandidatesFromNodes(nodes, options) {
+  const candidates = [];
+  for (const item of nodes || []) {
+    const node = summarizeUiNode(item);
+    const text = [node.label, node.text, node.nodeId, node.windowName, node.transformPath, ...(node.componentTypes || [])].filter(Boolean).join(" ");
+    const isEvent = /eventui|eventoption|choice|option|selector|event|事件|选项|选择/i.test(text);
+    const isMap = /mapselectui|mapitem|map|node|地图|节点|路线/i.test(text);
+    if (options?.eventOnly && !isEvent) continue;
+    if (options?.mapOnly && !isMap) continue;
+    if (node.clickable !== true && !(node.supportedActions || []).some(action => normalizeActionName(action) === "click" || normalizeActionName(action) === "submit")) continue;
+    candidates.push({
+      index: candidates.length,
+      label: node.label || node.text || null,
+      text: node.text || node.label || null,
+      nodeId: node.nodeId,
+      windowName: node.windowName,
+      transformPath: node.transformPath,
+      componentTypes: node.componentTypes || [],
+      selector: compactUiSelector(node)
+    });
+  }
+  return candidates;
+}
+
+function selectOptionCandidate(options, selector) {
+  if (Number.isInteger(selector?.index)) return options[selector.index] || null;
+  if (selector?.nodeId) {
+    const expected = String(selector.nodeId);
+    const byId = options.find(item => item.nodeId === expected || item.nodeId?.includes(expected));
+    if (byId) return byId;
+  }
+  if (selector?.text) {
+    return options.find(item => {
+      const haystack = [item.label, item.text, item.nodeId, item.transformPath].filter(Boolean).join(" ");
+      return textMatches(haystack, selector.text, { caseSensitive: false, exact: selector.contains === false });
+    }) || null;
+  }
+  return options[0] || null;
+}
+
+function visibleUiWindows(ui) {
+  return arrayValue(ui, "Windows")
+    .filter(item => fieldValue(item, "Visible") !== false && fieldValue(item, "ActiveInHierarchy") !== false)
+    .map(item => ({
+      windowName: fieldValue(item, "WindowName"),
+      nodeId: fieldValue(item, "NodeId"),
+      transformPath: fieldValue(item, "TransformPath")
+    }));
+}
+
+function visibleUiNodes(ui, args) {
+  return arrayValue(ui, "Nodes")
+    .filter(item => args?.includeHidden || (fieldValue(item, "Visible") !== false && fieldValue(item, "ActiveInHierarchy") !== false))
+    .filter(item => args?.onlyInteractive !== true || fieldValue(item, "Interactable") !== false || fieldValue(item, "Clickable") === true || normalizedActions(item).length > 0);
+}
+
+function routeFieldsByName(fields) {
+  const result = {};
+  for (const field of fields || []) {
+    const name = field?.name || "";
+    const key = normalizeRouteFieldKey(name);
+    if (!key || result[key] != null) continue;
+    result[key] = compactRouteFieldValue(field.value);
+  }
+  return result;
+}
+
+function normalizeRouteFieldKey(name) {
+  const text = String(name || "").replace(/[^A-Za-z0-9]+/g, "");
+  if (!text) return "";
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+function firstValue(values) {
+  for (const value of values || []) {
+    if (value != null && String(value).trim() !== "") return value;
+  }
+  return null;
+}
+
+function firstUsefulText(values, pattern) {
+  const unique = [...new Set((values || []).map(String).filter(value => value.trim() !== ""))];
+  return unique.find(value => pattern.test(value)) || unique.find(value => value.length > 1 && value.length < 80) || null;
+}
+
+function firstPatternText(values, pattern) {
+  const unique = [...new Set((values || []).map(String).filter(value => value.trim() !== ""))];
+  return unique.find(value => pattern.test(value)) || null;
+}
+
+function inferTransitioning(activeWindows, texts, trace) {
+  const haystack = [
+    ...(activeWindows || []).map(item => item.windowName || ""),
+    ...(texts || []),
+    ...(trace.route || []).map(item => item.name || "")
+  ].join(" ");
+  return /(loading|transition|changing|切换|加载|读取|正在|请稍候)/i.test(haystack);
+}
+
 async function evaluateUiTextAssertion(args) {
   const expected = asStringArray(args?.expectedTexts, args?.expectedText);
   if (expected.length === 0) {
@@ -6596,6 +7057,55 @@ function compareOperationStateFingerprints(before, after) {
     beforeSignature: before.signature,
     afterSignature: after.signature
   };
+}
+
+async function waitForStateChange(before, waitFor) {
+  const timeoutMs = Math.max(0, Math.min(30000, Number(waitFor?.timeoutMs ?? 3000)));
+  const pollMs = Math.max(50, Math.min(5000, Number(waitFor?.pollMs ?? 150)));
+  const startedAt = Date.now();
+  let last = null;
+  while (Date.now() - startedAt <= timeoutMs) {
+    last = await collectOperationStateFingerprint({ includeHidden: false, onlyInteractive: true });
+    const diff = compareOperationStateFingerprints(before, last);
+    const fields = diff.changedFields || [];
+    const matched = (
+      (waitFor?.windowChanged === true && fields.includes("activeWindows")) ||
+      (waitFor?.layoutChanged === true && fields.includes("layoutSignature")) ||
+      (waitFor?.stateChanged === true && diff.changed === true) ||
+      (!waitFor?.windowChanged && !waitFor?.layoutChanged && !waitFor?.stateChanged && diff.changed === true)
+    );
+    if (matched) {
+      return { ok: true, changed: true, timedOut: false, waitedMs: Date.now() - startedAt, diff, current: last };
+    }
+    await new Promise(resolve => setTimeout(resolve, pollMs));
+  }
+  const diff = compareOperationStateFingerprints(before, last);
+  return { ok: false, changed: false, timedOut: true, waitedMs: Date.now() - startedAt, diff, current: last };
+}
+
+async function executeRuntimeComponentCall(args, options = {}) {
+  const componentArgs = { ...args, dryRun: options?.forceDryRun ? true : args?.dryRun !== false };
+  if (componentArgs.dryRun) {
+    delete componentArgs.confirm;
+  }
+  const waitFor = componentArgs.waitFor;
+  delete componentArgs.waitFor;
+  const shouldWait = !componentArgs.dryRun && waitFor && typeof waitFor === "object";
+  const before = shouldWait ? await collectOperationStateFingerprint({ includeHidden: false, onlyInteractive: true }) : null;
+  const result = await callBridge("runtime.component_call", componentArgs);
+  const response = { ...result };
+  if (shouldWait) {
+    response.beforeState = before;
+    response.wait = await waitForStateChange(before, waitFor);
+    response.afterState = response.wait?.current || null;
+    response.stateDiff = response.wait?.diff || null;
+    if (result?.ok !== false && response.wait?.changed !== true && args?.allowUnverifiedSuccess !== true) {
+      response.ok = false;
+      response.reason = "runtime_call_unverified_no_state_change";
+      response.message = "The component method call returned success, but the requested waitFor condition did not become true.";
+    }
+  }
+  return response;
 }
 
 async function probeNoMouseOperation(args) {
@@ -7299,7 +7809,7 @@ async function collectStateSummary(args) {
 
   const legalActions = legalActionsFrom(snapshot.legalActions);
   const suggestedAction = chooseLegalAction(legalActions, args || {});
-  return {
+  const summary = {
     ok: true,
     capturedAtUtc: snapshot.capturedAtUtc,
     bridge: snapshot.status?.data || snapshot.status,
@@ -7318,6 +7828,49 @@ async function collectStateSummary(args) {
       battle: snapshotSourceEvidence(snapshot.battle)
     }
   };
+  if (args?.compact === true) {
+    summary.ui = compactSummaryUi(summary.ui);
+    summary.scene = {
+      sceneName: summary.scene.sceneName,
+      count: summary.scene.count,
+      objects: summary.scene.objects.slice(0, Math.min(10, limit(args?.maxSceneObjects, 20))).map(item => ({
+        name: item.name,
+        objectId: item.objectId,
+        transformPath: item.transformPath,
+        supportedActions: item.supportedActions
+      }))
+    };
+  }
+  return applyFieldFilter(summary, args?.fields);
+}
+
+function compactSummaryUi(ui) {
+  return {
+    totalNodes: ui.totalNodes,
+    visibleNodes: ui.visibleNodes,
+    layoutSignature: ui.layoutSignature,
+    activeWindows: (ui.activeWindows || []).map(item => item.windowName || item.transformPath).filter(Boolean),
+    clickables: (ui.clickableNodes || []).slice(0, 20).map(item => ({
+      label: item.label || item.text || null,
+      nodeId: item.nodeId,
+      windowName: item.windowName,
+      transformPath: item.transformPath,
+      supportedActions: item.supportedActions
+    }))
+  };
+}
+
+function applyFieldFilter(object, fields) {
+  if (!Array.isArray(fields) || fields.length === 0) return object;
+  const result = { ok: object?.ok !== false };
+  for (const field of fields) {
+    if (field in object) result[field] = object[field];
+    if (field === "activeWindows") result.activeWindows = object?.ui?.activeWindows || [];
+    if (field === "clickables") result.clickables = object?.ui?.clickables || object?.ui?.clickableNodes || [];
+    if (field === "titles") result.titles = object?.ui?.titles || [];
+    if (field === "legalActions") result.legalActions = object?.legalActions;
+  }
+  return result;
 }
 
 function snapshotSourceEvidence(result) {
@@ -7974,11 +8527,7 @@ async function executeRecommendedCall(call, options) {
       }
       return callBridge("runtime.invoke_static", args);
     case "witch_runtime_component_call": {
-      const componentArgs = { ...args, dryRun: options?.forceDryRun ? true : args.dryRun !== false };
-      if (componentArgs.dryRun) {
-        delete componentArgs.confirm;
-      }
-      return callBridge("runtime.component_call", componentArgs);
+      return executeRuntimeComponentCall(args, options || {});
     }
     case "witch_runtime_component_set": {
       const componentArgs = { ...args, dryRun: options?.forceDryRun ? true : args.dryRun !== false };
@@ -8001,6 +8550,16 @@ async function executeRecommendedCall(call, options) {
       return assertEventId(args);
     case "witch_assert_forbidden_text":
       return assertForbiddenText(args);
+    case "witch_event_choose_option":
+      return chooseEventOption(args);
+    case "witch_story_map_snapshot":
+      return collectStoryMapSnapshot(args);
+    case "witch_log_tail":
+      return logTail(args);
+    case "witch_screenshot":
+      return captureScreenshotSummary(args);
+    case "witch_map_select_node":
+      return selectMapNode(args);
     default:
       return { ok: false, error: "Refusing to execute unsupported planned tool: " + call.tool, call };
   }
@@ -8093,6 +8652,16 @@ async function executeBatchStep(step, options) {
       return assertEventId(args);
     case "witch_assert_forbidden_text":
       return assertForbiddenText(args);
+    case "witch_event_choose_option":
+      return chooseEventOption({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
+    case "witch_story_map_snapshot":
+      return collectStoryMapSnapshot(args);
+    case "witch_log_tail":
+      return logTail(args);
+    case "witch_screenshot":
+      return captureScreenshotSummary(args);
+    case "witch_map_select_node":
+      return selectMapNode({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_execute_operation":
       return executeOperation({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_battle_snapshot":
