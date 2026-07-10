@@ -143,7 +143,7 @@ $entryDll = Join-Path $dataMod "Scripts\Entry.dll"
 if (Test-Path -LiteralPath $entryDll) {
   try {
     $bytes = [System.IO.File]::ReadAllBytes($entryDll)
-    $markers = @("0.9.0", "screen.info", "screen.capture", "window.focus", "input.key", "input.text", "input.mouse", "CodexMcpBridgeRunner", "runtime.inspect", "runtime.objects", "runtime.object_detail", "runtime.component_members", "runtime.component_call", "runtime.component_set", "runtime.invoke_static")
+    $markers = @("0.9.0", "screen.info", "screen.capture", "window.focus", "input.key", "input.text", "input.mouse", "CodexMcpBridgeRunner", "runtime.inspect", "runtime.objects", "runtime.object_detail", "runtime.component_members", "runtime.component_call", "runtime.component_set", "runtime.invoke_static", "map.place_card")
     foreach ($marker in $markers) {
       $asciiPattern = [System.Text.Encoding]::ASCII.GetBytes($marker)
       $unicodePattern = [System.Text.Encoding]::Unicode.GetBytes($marker)

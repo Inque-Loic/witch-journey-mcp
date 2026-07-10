@@ -4,6 +4,8 @@ import { once } from "node:events";
 
 const port = 19188;
 let clickCount = 0;
+let mapPlaceCount = 0;
+let slotFilled = false;
 
 const bridge = http.createServer((request, response) => {
   let body = "";
@@ -86,11 +88,14 @@ if (!dryRun.ok || dryRun.selectedCard.label !== "经典肉鸽" || dryRun.selecte
 }
 
 const executed = textResult(3);
-if (clickCount !== 2) {
-  throw new Error(`expected two click attempts, got ${clickCount}`);
+if (clickCount !== 0) {
+  throw new Error(`semantic map placement should not use fallback clicks, got ${clickCount}`);
 }
-if (executed.ok !== false || executed.reason !== "map_place_unverified_no_state_change") {
-  throw new Error(`map place should fail when state does not change ${JSON.stringify(executed, null, 2)}`);
+if (mapPlaceCount !== 1) {
+  throw new Error(`expected one semantic map.place_card call, got ${mapPlaceCount}`);
+}
+if (executed.ok !== true || executed.slotVerification?.filled !== true) {
+  throw new Error(`map place should verify the slot was filled ${JSON.stringify(executed, null, 2)}`);
 }
 if (executed.postSummary) {
   throw new Error(`post summary should be omitted by default ${JSON.stringify(executed, null, 2)}`);
@@ -122,6 +127,18 @@ function commandResult(command, params) {
     case "ui.interact":
       if (params.action === "click") clickCount++;
       return { ok: true, action: params.action, selector: params.selector };
+    case "map.place_card":
+      mapPlaceCount++;
+      slotFilled = true;
+      return {
+        ok: true,
+        data: {
+          ok: true,
+          selectedCard: { path: params.cardPath, label: params.cardLabel },
+          selectedSlot: { path: params.slotPath, label: params.slotLabel },
+          slotFillAfter: { ok: true, filled: true, childCount: 1 }
+        }
+      };
     case "scene.snapshot":
       return { ok: true, data: { Objects: [] } };
     case "battle.snapshot":
@@ -129,7 +146,17 @@ function commandResult(command, params) {
     case "game.legal_actions":
       return { ok: true, data: { Phase: "map", Actions: [] } };
     case "runtime.objects":
-      return { ok: true, data: { objects: [] } };
+      return {
+        ok: true,
+        data: {
+          objects: slotFilled
+            ? [
+                { name: "Content", instanceId: 201, path: "Canvas/MapSelectUI/Top/PathSlot0/Content", activeSelf: true, activeInHierarchy: true },
+                { name: "MapCard", instanceId: 202, path: "Canvas/MapSelectUI/Top/PathSlot0/Content/MapCard", activeSelf: true, activeInHierarchy: true }
+              ]
+            : []
+        }
+      };
     default:
       return { ok: false, error: `unexpected ${command}` };
   }

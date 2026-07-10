@@ -56,6 +56,17 @@ namespace CodexMcpBridge
         public bool Cancelled;
     }
 
+    internal sealed class MapSlotFill
+    {
+        public bool ok;
+        public bool filled;
+        public string reason;
+        public object slot;
+        public string contentPath;
+        public int childCount;
+        public List<object> children = new List<object>();
+    }
+
     public static class BridgeServer
     {
         private const string Prefix = "http://127.0.0.1:18171/";
@@ -327,6 +338,8 @@ namespace CodexMcpBridge
                     return CaptureBattleSnapshot(args);
                 case "battle.play_card":
                     return InvokeStatic("Witch.UI.Automation.RuntimeBattleAutomationService", "PlayCardAsync", BuildPlayCardRequest(args));
+                case "map.place_card":
+                    return PlaceMapCard(args);
                 case "runtime.inspect":
                     return InspectRuntime(args);
                 case "runtime.objects":
@@ -700,6 +713,249 @@ namespace CodexMcpBridge
                 found = true,
                 gameObject = DescribeGameObject(go, camera, false, true),
                 components = componentDetails
+            };
+        }
+
+        private static object PlaceMapCard(JObject args)
+        {
+            var dryRun = Value(args, "dryRun", true);
+            var confirm = Value<string>(args, "confirm", "");
+            if (!dryRun && confirm != "PLACE_WITCH_MAP_CARD")
+                throw new InvalidOperationException("map.place_card requires confirm=PLACE_WITCH_MAP_CARD when dryRun is false.");
+
+            var card = FindMapComponent(args, "card", "MapItem");
+            var slot = FindMapComponent(args, "slot", "SwapContentIdentity");
+            var content = slot == null ? null : ReadTransformMember(slot, "Content");
+            var before = DescribeMapSlotFill(slot, content);
+            if (card == null || slot == null)
+            {
+                return new
+                {
+                    ok = false,
+                    dryRun,
+                    reason = card == null ? "map_card_not_found" : "map_slot_not_found",
+                    selector = args,
+                    selectedCard = DescribeMapComponent(card),
+                    selectedSlot = DescribeMapComponent(slot),
+                    slotFill = before
+                };
+            }
+
+            var addToList = SelectSingleArgumentMethod(card.GetType(), "AddToList", slot.GetType());
+            var removeFromParent = SelectNoArgumentMethod(card.GetType(), "RemoveFromParent");
+            var dataUpdate = SelectNoArgumentMethod(card.GetType(), "DataUpdate");
+            var selected = new
+            {
+                ok = true,
+                dryRun,
+                selectedCard = DescribeMapComponent(card),
+                selectedSlot = DescribeMapComponent(slot),
+                slotFillBefore = before,
+                method = addToList == null ? null : DescribeMethod(addToList),
+                removeMethod = removeFromParent == null ? null : DescribeMethod(removeFromParent),
+                dataUpdateMethod = dataUpdate == null ? null : DescribeMethod(dataUpdate)
+            };
+            if (dryRun)
+                return selected;
+            if (addToList == null)
+                return new
+                {
+                    ok = false,
+                    dryRun,
+                    reason = "map_card_add_to_list_method_not_found",
+                    selectedCard = selected.selectedCard,
+                    selectedSlot = selected.selectedSlot,
+                    slotFillBefore = before
+                };
+
+            object invokeResult = null;
+            try
+            {
+                if (removeFromParent != null)
+                    removeFromParent.Invoke(card, new object[0]);
+                invokeResult = addToList.Invoke(card, new object[] { slot });
+                if (dataUpdate != null)
+                    dataUpdate.Invoke(card, new object[0]);
+            }
+            catch (TargetInvocationException ex)
+            {
+                var inner = ex.InnerException ?? ex;
+                return new
+                {
+                    ok = false,
+                    dryRun,
+                    reason = "map_card_place_invocation_failed",
+                    error = inner.GetType().Name,
+                    message = Truncate(inner.Message, 1000),
+                    selectedCard = selected.selectedCard,
+                    selectedSlot = selected.selectedSlot,
+                    slotFillBefore = before,
+                    slotFillAfter = DescribeMapSlotFill(slot, content)
+                };
+            }
+
+            var after = DescribeMapSlotFill(slot, content);
+            return new
+            {
+                ok = after.filled,
+                dryRun,
+                reason = after.filled ? null : "map_place_unverified_slot_not_filled",
+                selectedCard = selected.selectedCard,
+                selectedSlot = selected.selectedSlot,
+                slotFillBefore = before,
+                slotFillAfter = after,
+                result = SafeValue(invokeResult, addToList.ReturnType, 500)
+            };
+        }
+
+        private static UnityEngine.Component FindMapComponent(JObject args, string prefix, string componentType)
+        {
+            var instanceId = NullableInt(args, prefix + "InstanceId");
+            var objectInstanceId = NullableInt(args, prefix + "ObjectInstanceId");
+            var path = Value<string>(args, prefix + "Path", "");
+            var label = Value<string>(args, prefix + "Label", "");
+            var index = NullableInt(args, prefix + "Index");
+            var includeInactive = Value(args, "includeInactive", true);
+            var foundIndex = 0;
+            foreach (var component in FindComponents(includeInactive))
+            {
+                if (component == null)
+                    continue;
+                var go = component.gameObject;
+                if (go == null)
+                    continue;
+                var type = component.GetType();
+                if (!ContainsIgnoreCase(type.Name, componentType) && !ContainsIgnoreCase(type.FullName, componentType))
+                    continue;
+                if (instanceId.HasValue && component.GetInstanceID() != instanceId.Value)
+                    continue;
+                if (objectInstanceId.HasValue && go.GetInstanceID() != objectInstanceId.Value)
+                    continue;
+                if (!string.IsNullOrWhiteSpace(path) && !string.Equals(TransformPath(go.transform), path, StringComparison.Ordinal))
+                    continue;
+                if (!string.IsNullOrWhiteSpace(label) && !MapComponentMatchesLabel(component, label))
+                    continue;
+                if (index.HasValue && foundIndex != index.Value)
+                {
+                    foundIndex++;
+                    continue;
+                }
+                return component;
+            }
+            return null;
+        }
+
+        private static bool MapComponentMatchesLabel(UnityEngine.Component component, string label)
+        {
+            if (component == null || string.IsNullOrWhiteSpace(label))
+                return true;
+            if (ContainsIgnoreCase(component.gameObject.name, label) || ContainsIgnoreCase(TransformPath(component.gameObject.transform), label))
+                return true;
+            var values = ReadNamedValues(component, new[] { "Id", "id", "Name", "name", "Title", "title", "Text", "text", "Label", "label" }, 300);
+            var data = ReadNestedNamedValues(component, new[] { "DataConfig", "dataConfig", "data", "Data", "node", "Node", "node1", "Node1" }, new[] { "Id", "id", "Name", "name", "Title", "title", "Text", "text", "Label", "label" }, 300);
+            return DictionaryContainsValue(values, label) || DictionaryContainsValue(data, label);
+        }
+
+        private static bool DictionaryContainsValue(Dictionary<string, object> values, string query)
+        {
+            if (values == null || string.IsNullOrWhiteSpace(query))
+                return false;
+            foreach (var item in values)
+            {
+                var text = item.Value == null ? "" : JsonConvert.SerializeObject(item.Value);
+                if (ContainsIgnoreCase(text, query))
+                    return true;
+            }
+            return false;
+        }
+
+        private static MethodInfo SelectSingleArgumentMethod(Type type, string methodName, Type argumentType)
+        {
+            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!string.Equals(method.Name, methodName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var parameters = method.GetParameters();
+                if (parameters.Length != 1)
+                    continue;
+                if (argumentType == null || parameters[0].ParameterType.IsAssignableFrom(argumentType) || parameters[0].ParameterType.Name == argumentType.Name)
+                    return method;
+            }
+            return null;
+        }
+
+        private static MethodInfo SelectNoArgumentMethod(Type type, string methodName)
+        {
+            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!string.Equals(method.Name, methodName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (method.GetParameters().Length == 0)
+                    return method;
+            }
+            return null;
+        }
+
+        private static Transform ReadTransformMember(UnityEngine.Component component, string memberName)
+        {
+            if (component == null)
+                return null;
+            var type = component.GetType();
+            var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (prop != null && prop.CanRead && prop.GetIndexParameters().Length == 0)
+                return prop.GetValue(component, null) as Transform;
+            var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (field != null)
+                return field.GetValue(component) as Transform;
+            return null;
+        }
+
+        private static object DescribeMapComponent(UnityEngine.Component component)
+        {
+            if (component == null)
+                return null;
+            return new
+            {
+                instanceId = component.GetInstanceID(),
+                objectInstanceId = component.gameObject.GetInstanceID(),
+                name = component.gameObject.name,
+                componentType = component.GetType().FullName,
+                path = TransformPath(component.gameObject.transform),
+                activeInHierarchy = component.gameObject.activeInHierarchy
+            };
+        }
+
+        private static MapSlotFill DescribeMapSlotFill(UnityEngine.Component slot, Transform content)
+        {
+            if (slot == null)
+                return new MapSlotFill { ok = false, filled = false, reason = "slot_missing" };
+            if (content == null)
+                content = ReadTransformMember(slot, "Content");
+            if (content == null)
+                return new MapSlotFill { ok = false, filled = false, reason = "slot_content_missing", slot = DescribeMapComponent(slot) };
+
+            var children = new List<object>();
+            for (var i = 0; i < content.childCount; i++)
+            {
+                var child = content.GetChild(i);
+                if (child == null || string.Equals(child.name, "Null", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                children.Add(new
+                {
+                    name = child.name,
+                    instanceId = child.gameObject.GetInstanceID(),
+                    path = TransformPath(child),
+                    activeSelf = child.gameObject.activeSelf,
+                    activeInHierarchy = child.gameObject.activeInHierarchy
+                });
+            }
+            return new MapSlotFill
+            {
+                ok = true,
+                filled = children.Count > 0,
+                contentPath = TransformPath(content),
+                childCount = children.Count,
+                children = children
             };
         }
 

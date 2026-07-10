@@ -32,7 +32,8 @@ const BRIDGE_MARKERS = [
   "runtime.component_call",
   "runtime.component_set",
   "runtime.invoke_static",
-  "battle.snapshot"
+  "battle.snapshot",
+  "map.place_card"
 ];
 const LOCAL_OS_FALLBACK_COMMANDS = new Set([
   "screen.info",
@@ -6361,6 +6362,8 @@ async function placeMapCard(args) {
       candidates
     };
   }
+  const bridgeArgs = buildMapPlaceBridgeArgs(card, slot, args || {}, dryRun);
+  const plannedBridgeCall = { tool: "witch_bridge_command", arguments: { command: "map.place_card", params: bridgeArgs } };
   const plannedCalls = [
     { tool: "witch_ui_interact", arguments: { action: "click", selector: card.selector, includePostSnapshot: false, compact: true } },
     { tool: "witch_ui_interact", arguments: { action: "click", selector: slot.selector, includePostSnapshot: false, compact: true } }
@@ -6370,31 +6373,72 @@ async function placeMapCard(args) {
     dryRun,
     selectedCard: card,
     selectedSlot: slot,
+    plannedBridgeCall,
     plannedCalls,
-    placementMode: "click_card_then_slot",
-    note: "This avoids low-level drag and verifies state change after the semantic placement attempt."
+    placementMode: "bridge_map_place_card",
+    fallbackPlacementMode: "click_card_then_slot",
+    note: "Uses the in-game semantic map.place_card bridge command when available, then verifies the path slot content."
   };
   if (dryRun) {
-    response.result = { ok: true, skipped: true, plannedCalls };
+    response.result = { ok: true, skipped: true, plannedBridgeCall, fallbackPlannedCalls: plannedCalls };
     return response;
   }
   const before = await collectOperationStateFingerprint({ includeHidden: false, onlyInteractive: true });
+  const bridgeResult = await safeCallBridge("map.place_card", bridgeArgs);
+  response.bridgeResult = bridgeResult;
+  const timeoutMs = Math.max(0, Math.min(10000, Number(args?.timeoutMs ?? 3000)));
+  if (!isUnknownBridgeCommand(bridgeResult, "map.place_card")) {
+    const bridgeData = bridgeResult?.data && typeof bridgeResult.data === "object" ? bridgeResult.data : bridgeResult;
+    response.results = [bridgeResult];
+    response.wait = await waitForStateChange(before, { stateChanged: true, timeoutMs, pollMs: 150 });
+    response.slotVerification = await waitForMapSlotFilled(slot, { timeoutMs, pollMs: 150 });
+    response.ok = bridgeResult?.ok === true && bridgeData?.ok !== false && response.slotVerification?.filled === true;
+    if (!response.ok) {
+      response.reason = bridgeData?.reason || (response.slotVerification?.filled === true
+        ? "map_place_unverified_no_state_change"
+        : "map_place_unverified_slot_not_filled");
+    }
+    if (args?.includePostSummary === true) {
+      response.postSummary = await collectStoryMapSnapshot({ includeHidden: false, onlyInteractive: false, includeHookLog: false, maxOptions: 20 });
+    }
+    return response;
+  }
+  response.placementMode = "click_card_then_slot";
+  response.bridgeFallbackReason = "map.place_card bridge command unavailable";
   const results = [];
   for (const call of plannedCalls) {
     results.push(await interactUi(call.arguments));
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   response.results = results;
-  const timeoutMs = Math.max(0, Math.min(10000, Number(args?.timeoutMs ?? 3000)));
   response.wait = await waitForStateChange(before, { stateChanged: true, timeoutMs, pollMs: 150 });
-  response.ok = results.every(item => item?.ok !== false) && response.wait?.changed === true;
+  response.slotVerification = await waitForMapSlotFilled(slot, { timeoutMs, pollMs: 150 });
+  response.ok = results.every(item => item?.ok !== false) && response.slotVerification?.filled === true;
   if (!response.ok && results.every(item => item?.ok !== false)) {
-    response.reason = "map_place_unverified_no_state_change";
+    response.reason = response.slotVerification?.filled === true
+      ? "map_place_unverified_no_state_change"
+      : "map_place_unverified_slot_not_filled";
   }
   if (args?.includePostSummary === true) {
     response.postSummary = await collectStoryMapSnapshot({ includeHidden: false, onlyInteractive: false, includeHookLog: false, maxOptions: 20 });
   }
   return response;
+}
+
+function buildMapPlaceBridgeArgs(card, slot, args, dryRun) {
+  return pruneUndefined({
+    cardInstanceId: Number.isInteger(card?.selector?.instanceId) ? card.selector.instanceId : undefined,
+    cardPath: card?.transformPath || card?.selector?.transformPath || undefined,
+    cardLabel: args?.cardLabel ?? args?.cardText ?? card?.label ?? card?.text ?? undefined,
+    cardIndex: Number.isInteger(args?.cardIndex) ? args.cardIndex : (Number.isInteger(card?.index) ? card.index : undefined),
+    slotInstanceId: Number.isInteger(slot?.selector?.instanceId) ? slot.selector.instanceId : undefined,
+    slotPath: slot?.transformPath || slot?.selector?.transformPath || undefined,
+    slotLabel: args?.slotLabel ?? slot?.label ?? slot?.text ?? undefined,
+    slotIndex: Number.isInteger(args?.slotIndex) ? args.slotIndex : (Number.isInteger(slot?.index) ? slot.index : undefined),
+    includeInactive: true,
+    dryRun,
+    confirm: dryRun ? undefined : "PLACE_WITCH_MAP_CARD"
+  });
 }
 
 async function executeUiCandidate(kind, selected, args) {
@@ -6577,7 +6621,9 @@ async function collectMapNodeCandidates(args) {
 async function collectMapPlacementCandidates() {
   const snapshot = await collectUiSnapshot({ includeHidden: false });
   const nodes = visibleUiNodes(snapshot.data || snapshot, { includeHidden: false, onlyInteractive: true });
+  const allVisibleNodes = visibleUiNodes(snapshot.data || snapshot, { includeHidden: false, onlyInteractive: false });
   const mapNodes = collectOptionCandidatesFromNodes(nodes, { eventOnly: false, mapOnly: true });
+  const mapSlotNodes = collectMapSlotCandidatesFromNodes(allVisibleNodes);
   const cards = [];
   const slots = [];
   for (const candidate of mapNodes) {
@@ -6598,10 +6644,87 @@ async function collectMapPlacementCandidates() {
       .filter(item => !cards.some(card => card.nodeId === item.nodeId))
       .forEach(item => slots.push({ ...item, index: slots.length, role: "slot_candidate" }));
   }
+  for (const slot of mapSlotNodes) {
+    if (!slots.some(item => item.nodeId === slot.nodeId || item.transformPath === slot.transformPath)) {
+      slots.push({ ...slot, index: slots.length, role: "empty_path_slot" });
+    }
+  }
   return {
     cards,
     slots,
     allMapNodes: mapNodes
+  };
+}
+
+function collectMapSlotCandidatesFromNodes(nodes) {
+  const slots = [];
+  for (const item of nodes || []) {
+    const node = summarizeUiNode(item);
+    const transformPath = String(node.transformPath || "");
+    const componentText = (node.componentTypes || []).join(" ");
+    const isPathSlot = /MapSelectUI\/Map\/NodeContent\/Node\d+$/i.test(transformPath) && /SwapContentIdentity/i.test(componentText);
+    if (!isPathSlot) continue;
+    if (slots.some(slot => slot.transformPath === transformPath || slot.nodeId === node.nodeId)) continue;
+    slots.push({
+      index: slots.length,
+      label: node.label || node.text || transformPath.split("/").pop() || null,
+      text: node.text || node.label || transformPath,
+      nodeId: node.nodeId,
+      windowName: node.windowName,
+      transformPath,
+      componentTypes: node.componentTypes || [],
+      selector: compactUiSelector(node)
+    });
+  }
+  return slots;
+}
+
+async function waitForMapSlotFilled(slot, options) {
+  const timeoutMs = Math.max(0, Math.min(10000, Number(options?.timeoutMs ?? 3000)));
+  const pollMs = Math.max(50, Math.min(5000, Number(options?.pollMs ?? 150)));
+  const startedAt = Date.now();
+  let last = null;
+  while (Date.now() - startedAt <= timeoutMs) {
+    last = await inspectMapSlotFilled(slot);
+    if (last.filled === true) {
+      return { ok: true, filled: true, timedOut: false, waitedMs: Date.now() - startedAt, ...last };
+    }
+    await new Promise(resolve => setTimeout(resolve, pollMs));
+  }
+  return { ok: false, filled: false, timedOut: true, waitedMs: Date.now() - startedAt, ...(last || {}) };
+}
+
+async function inspectMapSlotFilled(slot) {
+  const rootPath = String(slot?.transformPath || "").replace(/\/Content(?:\/.*)?$/i, "");
+  const contentPath = rootPath ? rootPath + "/Content" : "";
+  if (!contentPath) {
+    return { ok: false, reason: "slot_path_missing", slot };
+  }
+  const response = await safeCallBridge("runtime.objects", {
+    query: contentPath,
+    includeInactive: true,
+    includeComponents: true,
+    maxObjects: 40
+  });
+  const objects = response?.data?.objects || [];
+  const children = objects.filter(object => {
+    const path = String(object?.path || "");
+    if (path === contentPath) return false;
+    if (!path.startsWith(contentPath + "/")) return false;
+    return !/\/Null$/i.test(path);
+  });
+  return {
+    ok: response?.ok === true,
+    filled: children.length > 0,
+    contentPath,
+    childCount: children.length,
+    children: children.slice(0, 10).map(object => ({
+      name: object.name,
+      instanceId: object.instanceId,
+      path: object.path,
+      activeSelf: object.activeSelf,
+      activeInHierarchy: object.activeInHierarchy
+    }))
   };
 }
 
