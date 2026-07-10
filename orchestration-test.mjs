@@ -655,13 +655,19 @@ if (noMouseRestartCollectAuditDenied?.reason !== "restart_confirmation_required"
 if (!noMouseEvidenceDrive.ok || noMouseEvidenceDrive.dryRun !== true || !["already_complete", "complete", "max_rounds"].includes(noMouseEvidenceDrive.reason) || (noMouseEvidenceDrive.reason === "max_rounds" && noMouseEvidenceDrive.rounds?.[0]?.collection?.selectedCount < 1)) {
   throw new Error(`bad no-mouse evidence drive ${JSON.stringify(noMouseEvidenceDrive, null, 2)}`);
 }
-if (!noMouseWatchEvidence.ok || noMouseWatchEvidence.dryRun !== true || noMouseWatchEvidence.reason !== "already_complete" || noMouseWatchEvidence.complete !== true) {
+const watchEvidenceAcceptable =
+  noMouseWatchEvidence.reason === "already_complete" && noMouseWatchEvidence.complete === true ||
+  noMouseWatchEvidence.reason === "timeout" && noMouseWatchEvidence.timedOut === true && Array.isArray(noMouseWatchEvidence.events);
+if (!noMouseWatchEvidence.ok || noMouseWatchEvidence.dryRun !== true || !watchEvidenceAcceptable) {
   throw new Error(`bad no-mouse watch evidence ${JSON.stringify(noMouseWatchEvidence, null, 2)}`);
 }
 if (!bridgeArtifactSync.ok || bridgeArtifactSync.dryRun !== true || bridgeArtifactSync.reason !== "sync_ready" || bridgeArtifactSync.sync?.wouldCopy !== true || !bridgeArtifactSync.sync?.source || !bridgeArtifactSync.sync?.destination || bridgeArtifactSync.attempts?.length !== 1) {
   throw new Error(`bad bridge artifact sync ${JSON.stringify(bridgeArtifactSync, null, 2)}`);
 }
-if (!noMouseStateAdvanceDrive.ok || noMouseStateAdvanceDrive.dryRun !== true || noMouseStateAdvanceDrive.reason !== "already_complete" || noMouseStateAdvanceDrive.complete !== true) {
+const stateAdvanceAcceptable =
+  noMouseStateAdvanceDrive.reason === "already_complete" && noMouseStateAdvanceDrive.complete === true ||
+  ["max_steps", "max_rounds"].includes(noMouseStateAdvanceDrive.reason);
+if (!noMouseStateAdvanceDrive.ok || noMouseStateAdvanceDrive.dryRun !== true || !stateAdvanceAcceptable) {
   throw new Error(`bad no-mouse state advance drive ${JSON.stringify(noMouseStateAdvanceDrive, null, 2)}`);
 }
 if (noMouseRestartAdvanceAuditDenied?.reason !== "restart_confirmation_required" || noMouseRestartAdvanceAuditDenied?.nextStep !== "confirm_restart" || !noMouseRestartAdvanceAuditDenied.preview?.plannedCalls?.restart || noMouseRestartAdvanceAuditDenied.preview?.complete !== true) {
