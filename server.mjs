@@ -10,6 +10,7 @@ const BRIDGE_URL = process.env.WITCH_JOURNEY_BRIDGE_URL || "http://127.0.0.1:181
 const REQUEST_TIMEOUT_MS = Number(process.env.WITCH_JOURNEY_TIMEOUT_MS || 15000);
 const DEFAULT_NO_MOUSE = !["0", "false", "False", "FALSE", "no", "No", "NO"].includes(String(process.env.WITCH_JOURNEY_NO_MOUSE || "true"));
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SERVER_VERSION = "0.9.0";
 const WORKSPACE_ROOT = process.env.WITCH_JOURNEY_GAME_ROOT
   ? path.resolve(process.env.WITCH_JOURNEY_GAME_ROOT)
   : path.resolve(SERVER_DIR, "..", "..");
@@ -509,10 +510,87 @@ const tools = [
         onlyInteractive: { type: "boolean", default: true },
         includeInactive: { type: "boolean", default: false },
         includeComponentDetails: { type: "boolean", default: true },
+        includeHookLog: { type: "boolean", default: true },
+        hookLogTailLines: { type: "integer", default: 300 },
         maxUiNodes: { type: "integer", default: 80 },
         maxActions: { type: "integer", default: 80 },
         maxRuntimeObjects: { type: "integer", default: 40 },
         maxMembersPerComponent: { type: "integer", default: 60 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_assert_route",
+    description: "Read-only assertion for event/map route tests: require expected event ids, map nodes, UI text, forbidden text, and/or minimum route confidence.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expectedEventId: { type: "string" },
+        expectedEventIds: { type: "array", items: { type: "string" } },
+        expectedMapNode: { type: "string" },
+        expectedMapNodes: { type: "array", items: { type: "string" } },
+        expectedText: { type: "string" },
+        expectedTexts: { type: "array", items: { type: "string" } },
+        forbiddenText: { type: "string" },
+        forbiddenTexts: { type: "array", items: { type: "string" } },
+        minConfidence: { type: "number", default: 0 },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: false },
+        includeHookLog: { type: "boolean", default: true },
+        caseSensitive: { type: "boolean", default: false },
+        exact: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_assert_ui_text",
+    description: "Read-only assertion that the current visible UI contains one or more expected text snippets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expectedText: { type: "string" },
+        expectedTexts: { type: "array", items: { type: "string" } },
+        requireAll: { type: "boolean", default: true },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: false },
+        caseSensitive: { type: "boolean", default: false },
+        exact: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_assert_event_id",
+    description: "Read-only assertion that the current event/map route trace exposes one or more expected event ids.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expectedEventId: { type: "string" },
+        expectedEventIds: { type: "array", items: { type: "string" } },
+        requireAll: { type: "boolean", default: true },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        includeHookLog: { type: "boolean", default: true },
+        caseSensitive: { type: "boolean", default: false },
+        exact: { type: "boolean", default: true }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "witch_assert_forbidden_text",
+    description: "Read-only assertion that the current UI does not contain forbidden text snippets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        forbiddenText: { type: "string" },
+        forbiddenTexts: { type: "array", items: { type: "string" } },
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: false },
+        caseSensitive: { type: "boolean", default: false },
+        exact: { type: "boolean", default: false }
       },
       additionalProperties: false
     }
@@ -1413,7 +1491,7 @@ async function handleRequest(request) {
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "witch-journey-mcp", version: "0.1.0" }
+        serverInfo: { name: "witch-journey-mcp", version: SERVER_VERSION }
       }
     };
   }
@@ -1503,6 +1581,18 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_event_route_trace") {
       return toolResult(id, await collectEventRouteTrace(args));
+    }
+    if (toolName === "witch_assert_route") {
+      return toolResult(id, await assertRoute(args));
+    }
+    if (toolName === "witch_assert_ui_text") {
+      return toolResult(id, await assertUiText(args));
+    }
+    if (toolName === "witch_assert_event_id") {
+      return toolResult(id, await assertEventId(args));
+    }
+    if (toolName === "witch_assert_forbidden_text") {
+      return toolResult(id, await assertForbiddenText(args));
     }
     if (toolName === "witch_execute_operation") {
       return toolResult(id, await executeOperation(args));
@@ -2282,6 +2372,7 @@ async function captureAndWait(args) {
 function localCapabilities() {
   return {
     ok: true,
+    serverVersion: SERVER_VERSION,
     bridgeUrl: BRIDGE_URL,
     workspaceRoot: WORKSPACE_ROOT,
     requestTimeoutMs: REQUEST_TIMEOUT_MS,
@@ -5453,6 +5544,9 @@ async function collectEventRouteTrace(args) {
     maxRuntimeObjects,
     maxMembersPerComponent
   });
+  const hookLogSummary = args?.includeHookLog === false
+    ? null
+    : await collectHookLogSummary({ tailLines: limit(args?.hookLogTailLines, 300) });
 
   const candidateSources = [];
   activeWindows.forEach((item, index) => candidateSources.push({ source: "ui.window", index, value: item }));
@@ -5480,6 +5574,7 @@ async function collectEventRouteTrace(args) {
     runtimeManagers: runtime.managers,
     runtimeObjects: runtime.objects,
     componentFields: runtime.fields,
+    hookLogSummary,
     notes: [
       "This is a read-only correlation trace. Candidate ids are inferred from visible UI, legal actions, runtime objects, and readable component fields.",
       "Use higher-confidence candidates and route steps to debug event/map wiring before executing state-changing operations."
@@ -5806,6 +5901,345 @@ function eventRouteConfidence({ activeWindows, uiNodes, legalActions, runtime, e
   if (mapCandidates.length > 0) score += 0.15;
   if (eventCandidates.length > 0) score += 0.2;
   return Math.max(0, Math.min(1, Number(score.toFixed(2))));
+}
+
+async function assertRoute(args) {
+  const trace = await collectEventRouteTrace({
+    ...args,
+    includeComponentDetails: args?.includeComponentDetails !== false,
+    includeHookLog: args?.includeHookLog !== false
+  });
+  const textAssertion = await evaluateUiTextAssertion({
+    ...args,
+    expectedTexts: asStringArray(args?.expectedTexts, args?.expectedText),
+    requireAll: true
+  });
+  const forbiddenAssertion = await evaluateForbiddenTextAssertion({
+    ...args,
+    forbiddenTexts: asStringArray(args?.forbiddenTexts, args?.forbiddenText)
+  });
+  const eventAssertion = evaluateRouteCandidateAssertion({
+    candidates: trace.eventCandidates || [],
+    expected: asStringArray(args?.expectedEventIds, args?.expectedEventId),
+    requireAll: true,
+    caseSensitive: !!args?.caseSensitive,
+    exact: args?.exact !== false
+  });
+  const mapAssertion = evaluateRouteCandidateAssertion({
+    candidates: trace.mapCandidates || [],
+    expected: asStringArray(args?.expectedMapNodes, args?.expectedMapNode),
+    requireAll: true,
+    caseSensitive: !!args?.caseSensitive,
+    exact: args?.exact !== false
+  });
+  const minConfidence = Number(args?.minConfidence || 0);
+  const confidenceAssertion = {
+    ok: !Number.isFinite(minConfidence) || minConfidence <= 0 || Number(trace.confidence || 0) >= minConfidence,
+    actual: Number(trace.confidence || 0),
+    expectedAtLeast: Number.isFinite(minConfidence) ? minConfidence : 0
+  };
+  const checks = [
+    { name: "route_available", ok: trace.ok === true },
+    { name: "event_ids", ...eventAssertion },
+    { name: "map_nodes", ...mapAssertion },
+    { name: "expected_text", ...textAssertion },
+    { name: "forbidden_text", ...forbiddenAssertion },
+    { name: "confidence", ...confidenceAssertion }
+  ];
+  const activeChecks = checks.filter(check => check.ok !== null);
+  const pass = activeChecks.length > 0 && activeChecks.every(check => check.ok === true);
+  return {
+    ok: pass,
+    assertion: "route",
+    capturedAtUtc: new Date().toISOString(),
+    checks,
+    missing: activeChecks.flatMap(check => check.missing || []),
+    violations: activeChecks.flatMap(check => check.violations || []),
+    trace
+  };
+}
+
+async function assertUiText(args) {
+  const assertion = await evaluateUiTextAssertion({
+    ...args,
+    expectedTexts: asStringArray(args?.expectedTexts, args?.expectedText),
+    requireAll: args?.requireAll !== false
+  });
+  return {
+    ok: assertion.ok === true,
+    assertion: "ui_text",
+    capturedAtUtc: new Date().toISOString(),
+    ...assertion
+  };
+}
+
+async function assertEventId(args) {
+  const trace = await collectEventRouteTrace({
+    ...args,
+    includeHookLog: args?.includeHookLog !== false
+  });
+  const assertion = evaluateRouteCandidateAssertion({
+    candidates: trace.eventCandidates || [],
+    expected: asStringArray(args?.expectedEventIds, args?.expectedEventId),
+    requireAll: args?.requireAll !== false,
+    caseSensitive: !!args?.caseSensitive,
+    exact: args?.exact !== false
+  });
+  return {
+    ok: trace.ok === true && assertion.ok === true,
+    assertion: "event_id",
+    capturedAtUtc: new Date().toISOString(),
+    ...assertion,
+    trace
+  };
+}
+
+async function assertForbiddenText(args) {
+  const assertion = await evaluateForbiddenTextAssertion({
+    ...args,
+    forbiddenTexts: asStringArray(args?.forbiddenTexts, args?.forbiddenText)
+  });
+  return {
+    ok: assertion.ok === true,
+    assertion: "forbidden_text",
+    capturedAtUtc: new Date().toISOString(),
+    ...assertion
+  };
+}
+
+async function evaluateUiTextAssertion(args) {
+  const expected = asStringArray(args?.expectedTexts, args?.expectedText);
+  if (expected.length === 0) {
+    return { ok: null, skipped: true, reason: "no_expected_text", expected, matches: [], missing: [] };
+  }
+  const context = await collectUiTextAssertionContext(args || {});
+  if (!context.ok) {
+    return { ok: false, expected, matches: [], missing: expected, context };
+  }
+  const result = evaluateTextPresence({
+    expected,
+    evidence: context.evidence,
+    requireAll: args?.requireAll !== false,
+    caseSensitive: !!args?.caseSensitive,
+    exact: !!args?.exact
+  });
+  return { ...result, context: compactUiAssertionContext(context) };
+}
+
+async function evaluateForbiddenTextAssertion(args) {
+  const forbidden = asStringArray(args?.forbiddenTexts, args?.forbiddenText);
+  if (forbidden.length === 0) {
+    return { ok: null, skipped: true, reason: "no_forbidden_text", forbidden, violations: [] };
+  }
+  const context = await collectUiTextAssertionContext(args || {});
+  if (!context.ok) {
+    return { ok: false, forbidden, violations: [], context };
+  }
+  const violations = [];
+  for (const item of forbidden) {
+    const matches = findTextMatches(context.evidence, item, args || {});
+    if (matches.length > 0) {
+      violations.push({ text: item, matches });
+    }
+  }
+  return {
+    ok: violations.length === 0,
+    forbidden,
+    violations,
+    context: compactUiAssertionContext(context)
+  };
+}
+
+async function collectUiTextAssertionContext(args) {
+  const includeHidden = !!args?.includeHidden;
+  const onlyInteractive = args?.onlyInteractive === true;
+  const snapshot = await collectGameSnapshot({
+    includeUi: true,
+    includeScene: false,
+    includeBattle: false,
+    includeLegalActions: false,
+    includeHidden,
+    onlyInteractive
+  });
+  if (!snapshot.ok) {
+    return {
+      ok: false,
+      reason: "snapshot_unavailable",
+      snapshot
+    };
+  }
+  const uiData = snapshot.ui?.data || snapshot.ui || {};
+  const evidence = [];
+  arrayValue(uiData, "Windows")
+    .filter(window => includeHidden || (fieldValue(window, "Visible") !== false && fieldValue(window, "ActiveInHierarchy") !== false))
+    .forEach((window, index) => {
+      addTextEvidence(evidence, "ui.window", index, "windowName", fieldValue(window, "WindowName"), window);
+    });
+  arrayValue(uiData, "Nodes")
+    .filter(node => includeHidden || (fieldValue(node, "Visible") !== false && fieldValue(node, "ActiveInHierarchy") !== false))
+    .filter(node => !onlyInteractive || fieldValue(node, "Interactable") !== false || fieldValue(node, "Clickable") === true || normalizedActions(node).length > 0)
+    .map(summarizeUiNode)
+    .forEach((node, index) => {
+      addTextEvidence(evidence, "ui.node", index, "label", node.label, node);
+      addTextEvidence(evidence, "ui.node", index, "text", node.text, node);
+      addTextEvidence(evidence, "ui.node", index, "windowName", node.windowName, node);
+    });
+  return {
+    ok: true,
+    capturedAtUtc: snapshot.capturedAtUtc,
+    evidence,
+    sample: evidence.slice(0, 20),
+    snapshotSources: { ui: snapshot.ui?.ok !== false }
+  };
+}
+
+function compactUiAssertionContext(context) {
+  if (!context || context.ok === false) return context;
+  return {
+    ok: true,
+    capturedAtUtc: context.capturedAtUtc,
+    evidenceCount: Array.isArray(context.evidence) ? context.evidence.length : 0,
+    sample: context.sample || [],
+    snapshotSources: context.snapshotSources
+  };
+}
+
+function addTextEvidence(evidence, source, index, field, value, owner) {
+  if (value == null || String(value).trim() === "") return;
+  evidence.push({
+    value: String(value),
+    source,
+    sourceIndex: index,
+    field,
+    nodeId: fieldValue(owner, "NodeId") || owner?.nodeId || null,
+    windowName: fieldValue(owner, "WindowName") || owner?.windowName || null,
+    transformPath: fieldValue(owner, "TransformPath") || owner?.transformPath || null
+  });
+}
+
+function evaluateRouteCandidateAssertion(args) {
+  const expected = asStringArray(args?.expected);
+  if (expected.length === 0) {
+    return { ok: null, skipped: true, reason: "no_expected_candidates", expected, matches: [], missing: [] };
+  }
+  const evidence = (args?.candidates || []).map(candidate => ({
+    value: candidate.value,
+    source: candidate.source,
+    sourceIndex: candidate.sourceIndex,
+    field: candidate.path,
+    confidence: candidate.confidence,
+    candidate
+  }));
+  return evaluateTextPresence({
+    expected,
+    evidence,
+    requireAll: args?.requireAll !== false,
+    caseSensitive: !!args?.caseSensitive,
+    exact: args?.exact !== false
+  });
+}
+
+function evaluateTextPresence(args) {
+  const matches = [];
+  const missing = [];
+  for (const item of args.expected || []) {
+    const itemMatches = findTextMatches(args.evidence || [], item, args);
+    if (itemMatches.length > 0) {
+      matches.push({ text: item, matches: itemMatches });
+    } else {
+      missing.push(item);
+    }
+  }
+  const ok = args.requireAll
+    ? missing.length === 0
+    : matches.length > 0;
+  return {
+    ok,
+    requireAll: !!args.requireAll,
+    expected: args.expected || [],
+    matches,
+    missing
+  };
+}
+
+function findTextMatches(evidence, expected, options) {
+  return (evidence || [])
+    .filter(item => textMatches(item.value, expected, options || {}))
+    .slice(0, 20);
+}
+
+function textMatches(value, expected, options) {
+  const actualText = String(value || "");
+  const expectedText = String(expected || "");
+  const actual = options?.caseSensitive ? actualText : actualText.toLocaleLowerCase();
+  const query = options?.caseSensitive ? expectedText : expectedText.toLocaleLowerCase();
+  if (!query) return false;
+  return options?.exact ? actual === query : actual.includes(query);
+}
+
+function asStringArray(value, singleValue) {
+  const result = [];
+  if (Array.isArray(value)) {
+    value.forEach(item => {
+      if (item != null && String(item).trim() !== "") result.push(String(item));
+    });
+  }
+  if (singleValue != null && String(singleValue).trim() !== "") {
+    result.push(String(singleValue));
+  }
+  return [...new Set(result)];
+}
+
+async function collectHookLogSummary(args) {
+  const info = await statInfo(PLAYER_LOG_PATH);
+  if (!info.exists) {
+    return {
+      ok: false,
+      path: PLAYER_LOG_PATH,
+      exists: false,
+      reason: "player_log_not_found",
+      error: info.error || null
+    };
+  }
+  try {
+    const text = await fs.readFile(PLAYER_LOG_PATH, "utf8");
+    const allLines = text.split(/\r?\n/).filter(Boolean);
+    const tailLines = Math.max(20, Math.min(2000, Number(args?.tailLines || 300)));
+    const tail = allLines.slice(-tailLines);
+    const relevant = tail.filter(line => /\b(CodexMcpBridge|hook|event|map|archive|EchoEnding|allow|allowed|block|blocked|forbid|forbidden)\b/i.test(line)).slice(-80);
+    const routeMatches = dedupeRouteCandidates(relevant.flatMap((line, index) =>
+      routeIdMatches(line).map(match => ({
+        kind: match.kind,
+        value: match.value,
+        source: "player_log",
+        sourceIndex: index,
+        path: "line",
+        confidence: Math.min(1, 0.35 + match.weight)
+      }))
+    ));
+    return {
+      ok: true,
+      path: PLAYER_LOG_PATH,
+      exists: true,
+      sizeBytes: info.sizeBytes,
+      modifiedAtUtc: info.modifiedAtUtc,
+      inspectedTailLines: tailLines,
+      matchedLineCount: relevant.length,
+      recentLines: relevant,
+      eventCandidates: routeMatches.filter(item => item.kind === "event_id").slice(0, 40),
+      mapCandidates: routeMatches.filter(item => item.kind === "map_node" || item.kind === "map_id").slice(0, 40),
+      blockedOrForbiddenLines: relevant.filter(line => /\b(block|blocked|forbid|forbidden|deny|denied)\b/i.test(line)).slice(-20),
+      allowedLines: relevant.filter(line => /\b(allow|allowed)\b/i.test(line)).slice(-20)
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      path: PLAYER_LOG_PATH,
+      exists: true,
+      reason: "player_log_read_failed",
+      error: String(error?.message || error)
+    };
+  }
 }
 
 async function collectRuntimeActionOperations(args) {
@@ -7372,6 +7806,16 @@ async function executeRecommendedCall(call, options) {
       return collectStateSummary(args);
     case "witch_game_snapshot":
       return collectGameSnapshot(args);
+    case "witch_event_route_trace":
+      return collectEventRouteTrace(args);
+    case "witch_assert_route":
+      return assertRoute(args);
+    case "witch_assert_ui_text":
+      return assertUiText(args);
+    case "witch_assert_event_id":
+      return assertEventId(args);
+    case "witch_assert_forbidden_text":
+      return assertForbiddenText(args);
     default:
       return { ok: false, error: "Refusing to execute unsupported planned tool: " + call.tool, call };
   }
@@ -7454,6 +7898,16 @@ async function executeBatchStep(step, options) {
       return collectGameSnapshot(args);
     case "witch_control_map":
       return collectControlMap(args);
+    case "witch_event_route_trace":
+      return collectEventRouteTrace(args);
+    case "witch_assert_route":
+      return assertRoute(args);
+    case "witch_assert_ui_text":
+      return assertUiText(args);
+    case "witch_assert_event_id":
+      return assertEventId(args);
+    case "witch_assert_forbidden_text":
+      return assertForbiddenText(args);
     case "witch_execute_operation":
       return executeOperation({ ...args, dryRun: options?.dryRun ? true : args.dryRun !== false });
     case "witch_battle_snapshot":

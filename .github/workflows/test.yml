@@ -37,6 +37,7 @@ jobs:
           node --check .\battle-play-card-fallback-test.mjs
           node --check .\no-mouse-guidance-test.mjs
           node --check .\event-route-trace-test.mjs
+          node --check .\assertion-tools-test.mjs
           node --check .\verify-end-to-end-fake.mjs
           python -m py_compile .\mcp-call.py .\config-launch-test.py
           powershell -NoProfile -ExecutionPolicy Bypass -File .\verify-script-syntax.ps1
