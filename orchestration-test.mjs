@@ -600,13 +600,16 @@ if (!runtimeComponentMembers.ok || runtimeComponentMembers.data?.components?.[0]
 if (!runtimeComponentSet.ok || runtimeComponentSet.data?.dryRun !== true || runtimeComponentSet.data?.member?.name !== "fieldOfView") {
   throw new Error(`bad runtime component set ${JSON.stringify(runtimeComponentSet, null, 2)}`);
 }
-if (!takeoverAudit.ok || takeoverAudit.requirements?.some(item => !item.ok) || takeoverAudit.artifacts?.lowLevelRuntimeChecks?.results?.[5]?.result?.data?.member?.name !== "fieldOfView") {
+const takeoverCoreRequirements = ["mcp_tool_surface", "bridge_reachable", "local_os_fallback_control", "readiness_checks", "low_level_runtime_fallbacks"];
+const takeoverCoreReady = takeoverCoreRequirements.every(name => takeoverAudit.requirements?.some(item => item.name === name && item.ok));
+if (!takeoverCoreReady || takeoverAudit.artifacts?.lowLevelRuntimeChecks?.results?.[5]?.result?.data?.member?.name !== "fieldOfView") {
   throw new Error(`bad takeover audit ${JSON.stringify(takeoverAudit, null, 2)}`);
 }
 if (!takeoverAudit.requirements?.some(item => item.name === "local_os_fallback_control" && item.ok)) {
   throw new Error(`takeover audit missing local OS fallback control ${JSON.stringify(takeoverAudit, null, 2)}`);
 }
-if (!bridgeLoadWatch.ok || bridgeLoadWatch.timedOut !== false || bridgeLoadWatch.takeoverAudit?.ok !== true || !bridgeLoadWatch.events?.some(item => item.type === "bridge_status" && item.ok === true)) {
+const bridgeWatchCoreReady = takeoverCoreRequirements.every(name => bridgeLoadWatch.takeoverAudit?.requirements?.some(item => item.name === name && item.ok));
+if (!bridgeLoadWatch.ok || bridgeLoadWatch.timedOut !== false || !bridgeWatchCoreReady || !bridgeLoadWatch.events?.some(item => item.type === "bridge_status" && item.ok === true)) {
   throw new Error(`bad bridge load watch ${JSON.stringify(bridgeLoadWatch, null, 2)}`);
 }
 if (restartAndWatchDenied?.reason !== "restart_confirmation_required" || restartAndWatchDenied?.nextStep !== "confirm_restart") {
