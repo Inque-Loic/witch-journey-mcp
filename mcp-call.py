@@ -39,9 +39,13 @@ def read_frame(stream):
 
 def load_server():
     config = pathlib.Path.home() / ".codex" / "config.toml"
+    env = os.environ.copy()
+    if not config.exists():
+        server = pathlib.Path(__file__).resolve().with_name("server.mjs")
+        return ["node", str(server)], env
+
     data = tomllib.loads(config.read_text(encoding="utf-8"))
     server = data["mcp_servers"]["witchJourney"]
-    env = os.environ.copy()
     for key, value in server.get("env", {}).items():
         if key not in env:
             env[key] = value
