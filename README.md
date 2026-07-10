@@ -21,6 +21,7 @@
 
 - `witch_control_map` 会把当前可用的合法动作、UI 动作、场景对象动作、战斗动作和少量白名单 `runtime_action` 汇总成统一操作表。
 - `witch_execute_operation` 可以按 `operationId`、`family/action`、`label` 或 `index` 执行操作，默认 `dryRun:true`，只有显式传入 `dryRun:false` 才会真实推进游戏。
+- 新增 `witch_event_route_trace` 事件/地图路由追踪工具，用于把当前窗口、EventUI / MapSelectUI 节点、合法动作、MapManager / MapItem / EventUI 等运行时对象和可读组件字段关联起来，输出候选 event id、map node、分层 route 步骤和置信度，方便定位地图卡、事件 id 与实际加载链路。
 - 新增并验证了地图和战斗管理器上的保守运行时动作，例如显示地图选择、地图推进、战斗开始/结束回合检查等；这些动作默认不标记为 ready，真实执行需要 `confirm:"CALL_WITCH_COMPONENT_METHOD"`。
 - 当运行中的旧桥接 DLL 还不支持部分新命令时，MCP 会优先通过 runtime fallback 完成 UI、场景、合法动作和战斗观察/操作，而不是退回到 OS 鼠标。
 - `prove-no-mouse-takeover.ps1 -Status` 已在实机战斗状态下返回 `strict proof complete: True`，缺失证明项为 `0`；现场样本覆盖 UI、合法动作、场景对象、战斗卡牌/目标和运行时动作。
@@ -86,7 +87,7 @@
 
 ## 工具能力
 
-当前 MCP server 暴露 61 个工具，覆盖：
+当前 MCP server 暴露 62 个工具，覆盖：
 
 - 桥接状态检查、等待、重启编排
 - 本地运行时诊断、Mod 文件检查、桥文件新旧检查
@@ -97,6 +98,7 @@
 - 桥接 DLL 同步检查与确认式同步，例如 `witch_sync_bridge_artifacts`
 - 游戏合法动作、战斗快照、出牌、合法动作匹配、有边界的自动驾驶
 - 运行时类型/对象检查、组件成员枚举、组件方法 dry-run/确认调用、组件属性 dry-run/确认写入、静态运行时方法调用
+- 事件/地图路由追踪，例如 `witch_event_route_trace` 会把当前 `EventUI` / `MapSelectUI`、合法动作、`MapManager` / `NormalMapManager` / `MapItem` / `EventUI` 运行时对象和可读组件字段聚合起来，输出候选 event id、map node、route 步骤和置信度，用来定位“点了这个地图卡最后到底走到哪个事件”
 - 观察-规划-执行辅助，例如 `witch_control_map`、`witch_execute_operation`、`witch_state_summary`、`witch_plan_next`、`witch_execute_plan`、`witch_takeover_step`、`witch_takeover_drive`
 - 无鼠标能力审计、运行时覆盖矩阵、跨状态证据记录、操作级探针、ready 操作批量采证、证据驱动循环、证据机会监听、确认式状态推进、确认式重启后采证、完整证明编排、证据缺口计划和严格完成度审计，例如 `witch_no_mouse_audit`、`witch_no_mouse_coverage`、`witch_no_mouse_record_evidence`、`witch_no_mouse_probe_operation`、`witch_no_mouse_collect_ready_evidence`、`witch_no_mouse_evidence_drive`、`witch_no_mouse_state_advance_drive`、`witch_no_mouse_watch_evidence`、`witch_no_mouse_restart_collect_audit`、`witch_no_mouse_restart_advance_audit`、`witch_no_mouse_evidence_plan`、`witch_no_mouse_completion_audit`
 

@@ -500,6 +500,24 @@ const tools = [
     }
   },
   {
+    name: "witch_event_route_trace",
+    description: "Read-only event/map route trace: correlate current EventUI/MapSelectUI nodes, legal actions, runtime managers, MapItem/EventUI objects, component id-like fields, and candidate event/map ids.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeHidden: { type: "boolean", default: false },
+        onlyInteractive: { type: "boolean", default: true },
+        includeInactive: { type: "boolean", default: false },
+        includeComponentDetails: { type: "boolean", default: true },
+        maxUiNodes: { type: "integer", default: 80 },
+        maxActions: { type: "integer", default: 80 },
+        maxRuntimeObjects: { type: "integer", default: 40 },
+        maxMembersPerComponent: { type: "integer", default: 60 }
+      },
+      additionalProperties: false
+    }
+  },
+  {
     name: "witch_execute_operation",
     description: "Find one current no-mouse operation from witch_control_map by id, family/action, label, or index, then optionally execute its mapped MCP call.",
     inputSchema: {
@@ -1482,6 +1500,9 @@ async function handleRequest(request) {
     }
     if (toolName === "witch_control_map") {
       return toolResult(id, await collectControlMap(args));
+    }
+    if (toolName === "witch_event_route_trace") {
+      return toolResult(id, await collectEventRouteTrace(args));
     }
     if (toolName === "witch_execute_operation") {
       return toolResult(id, await executeOperation(args));
@@ -5382,6 +5403,409 @@ async function collectControlMap(args) {
       runtimeActionCount: byFamily.runtime_action || 0
     }
   };
+}
+
+async function collectEventRouteTrace(args) {
+  const includeHidden = !!args?.includeHidden;
+  const onlyInteractive = args?.onlyInteractive !== false;
+  const maxUiNodes = limit(args?.maxUiNodes, 80);
+  const maxActions = limit(args?.maxActions, 80);
+  const maxRuntimeObjects = limit(args?.maxRuntimeObjects, 40);
+  const maxMembersPerComponent = limit(args?.maxMembersPerComponent, 60);
+  const snapshot = await collectGameSnapshot({
+    includeHidden,
+    onlyInteractive,
+    includeUi: true,
+    includeScene: false,
+    includeBattle: false,
+    includeLegalActions: true
+  });
+
+  if (!snapshot.ok) {
+    return {
+      ok: false,
+      capturedAtUtc: snapshot.capturedAtUtc,
+      reason: "state_unavailable",
+      error: "Unable to trace event route because the bridge or state snapshots are unavailable.",
+      snapshot
+    };
+  }
+
+  const uiData = snapshot.ui?.data || snapshot.ui || {};
+  const activeWindows = arrayValue(uiData, "Windows")
+    .filter(window => fieldValue(window, "Visible") !== false && fieldValue(window, "ActiveInHierarchy") !== false)
+    .map(window => ({
+      windowName: fieldValue(window, "WindowName"),
+      nodeId: fieldValue(window, "NodeId"),
+      transformPath: fieldValue(window, "TransformPath")
+    }))
+    .filter(window => window.windowName || window.nodeId || window.transformPath);
+  const uiNodes = arrayValue(uiData, "Nodes")
+    .map(summarizeUiNode)
+    .filter(node => isEventRouteUiNode(node, onlyInteractive))
+    .slice(0, maxUiNodes);
+  const legalActions = legalActionsFrom(snapshot.legalActions)
+    .slice(0, maxActions)
+    .map(summarizeAction);
+  const runtime = await collectEventRouteRuntime({
+    includeInactive: !!args?.includeInactive,
+    includeComponentDetails: args?.includeComponentDetails !== false,
+    maxRuntimeObjects,
+    maxMembersPerComponent
+  });
+
+  const candidateSources = [];
+  activeWindows.forEach((item, index) => candidateSources.push({ source: "ui.window", index, value: item }));
+  uiNodes.forEach((item, index) => candidateSources.push({ source: "ui.node", index, value: item }));
+  legalActions.forEach((item, index) => candidateSources.push({ source: "legal_action", index, value: item }));
+  runtime.objects.forEach((item, index) => candidateSources.push({ source: "runtime.object", index, value: item }));
+  runtime.fields.forEach((item, index) => candidateSources.push({ source: "runtime.field", index, value: item }));
+
+  const candidates = dedupeRouteCandidates(candidateSources.flatMap(extractRouteCandidatesFromSource));
+  const eventCandidates = candidates.filter(candidate => candidate.kind === "event_id").slice(0, 80);
+  const mapCandidates = candidates.filter(candidate => candidate.kind === "map_node" || candidate.kind === "map_id").slice(0, 80);
+  const route = buildEventRouteSteps({ activeWindows, uiNodes, legalActions, runtime, eventCandidates, mapCandidates });
+  const confidence = eventRouteConfidence({ activeWindows, uiNodes, legalActions, runtime, eventCandidates, mapCandidates });
+
+  return {
+    ok: true,
+    capturedAtUtc: new Date().toISOString(),
+    confidence,
+    activeWindows,
+    route,
+    eventCandidates,
+    mapCandidates,
+    legalActions,
+    uiNodes,
+    runtimeManagers: runtime.managers,
+    runtimeObjects: runtime.objects,
+    componentFields: runtime.fields,
+    notes: [
+      "This is a read-only correlation trace. Candidate ids are inferred from visible UI, legal actions, runtime objects, and readable component fields.",
+      "Use higher-confidence candidates and route steps to debug event/map wiring before executing state-changing operations."
+    ],
+    snapshotSources: {
+      ui: snapshot.ui?.ok !== false,
+      legalActions: snapshot.legalActions?.ok !== false,
+      runtime: runtime.ok
+    }
+  };
+}
+
+async function collectEventRouteRuntime(args) {
+  const componentTypes = ["MapManager", "NormalMapManager", "MapItem", "EventUI", "EventManager"];
+  const results = await Promise.all(componentTypes.map(componentType =>
+    safeCallBridge("runtime.objects", {
+      componentType,
+      includeInactive: !!args?.includeInactive,
+      maxObjects: args?.maxRuntimeObjects
+    })
+  ));
+  const objects = [];
+  const fields = [];
+
+  for (let typeIndex = 0; typeIndex < componentTypes.length; typeIndex++) {
+    const componentType = componentTypes[typeIndex];
+    const result = results[typeIndex];
+    const items = runtimeObjectsFrom(result).slice(0, args?.maxRuntimeObjects || 40);
+    for (const item of items) {
+      const object = summarizeRuntimeRouteObject(item, componentType, result);
+      objects.push(object);
+      if (args?.includeComponentDetails !== false && Number.isInteger(object.instanceId)) {
+        const detail = await safeCallBridge("runtime.object_detail", {
+          instanceId: object.instanceId,
+          componentType,
+          maxMembersPerComponent: args?.maxMembersPerComponent || 60
+        });
+        fields.push(...extractRouteFieldsFromRuntimeDetail(detail, object, componentType));
+      }
+    }
+  }
+
+  return {
+    ok: results.some(result => result?.ok === true),
+    managers: objects.filter(object => containsText(object.componentType, "Manager") || containsText(object.name, "Manager")),
+    objects,
+    fields,
+    queries: componentTypes.map((componentType, index) => ({
+      componentType,
+      ok: results[index]?.ok === true,
+      count: runtimeObjectsFrom(results[index]).length,
+      error: results[index]?.error || null
+    }))
+  };
+}
+
+function summarizeRuntimeRouteObject(item, componentType, result) {
+  return {
+    sourceComponentType: componentType,
+    name: item?.name || item?.Name || null,
+    instanceId: item?.instanceId ?? item?.InstanceId ?? null,
+    path: item?.path || item?.Path || item?.transformPath || item?.TransformPath || null,
+    scene: item?.scene || item?.Scene || null,
+    activeInHierarchy: item?.activeInHierarchy ?? item?.ActiveInHierarchy ?? null,
+    componentType,
+    components: Array.isArray(item?.components) ? item.components.map(component => ({
+      type: component?.type || component?.Type || null,
+      name: component?.name || component?.Name || null,
+      enabled: component?.enabled ?? component?.Enabled ?? null
+    })) : [],
+    queryOk: result?.ok === true
+  };
+}
+
+function extractRouteFieldsFromRuntimeDetail(detail, object, componentType) {
+  const fields = [];
+  const data = detail?.data || detail;
+  const components = Array.isArray(data?.components) ? data.components : [];
+  for (const component of components) {
+    const members = Array.isArray(component?.members) ? component.members : [];
+    for (const member of members) {
+      const name = member?.name || member?.Name || "";
+      if (!isRouteFieldName(name)) continue;
+      fields.push({
+        objectName: object.name,
+        objectInstanceId: object.instanceId,
+        objectPath: object.path,
+        componentType: component?.type || component?.Type || componentType,
+        componentName: component?.name || component?.Name || componentType,
+        name,
+        kind: member?.kind || member?.Kind || null,
+        type: member?.type || member?.Type || null,
+        value: compactRouteFieldValue(member?.value ?? member?.Value ?? member?.currentValue ?? member?.CurrentValue),
+        readable: member?.readable ?? member?.Readable ?? null,
+        writable: member?.writable ?? member?.Writable ?? null
+      });
+    }
+  }
+  return fields.slice(0, 200);
+}
+
+function compactRouteFieldValue(value) {
+  if (value == null) return value;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.slice(0, 10).map(compactRouteFieldValue);
+  if (typeof value === "object") {
+    const result = {};
+    for (const key of Object.keys(value).slice(0, 20)) {
+      const item = value[key];
+      if (item == null || typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        result[key] = item;
+      }
+    }
+    return result;
+  }
+  return String(value);
+}
+
+function isEventRouteUiNode(node, onlyInteractive) {
+  const identityHaystack = [
+    node.nodeId,
+    node.label,
+    node.text,
+    node.windowName,
+    node.transformPath
+  ].filter(Boolean).join(" ");
+  const componentHaystack = (Array.isArray(node.componentTypes) ? node.componentTypes : []).filter(Boolean).join(" ");
+  if (!identityHaystack && !componentHaystack) return false;
+  const routeRelated = ["event", "map", "select", "selector", "option"]
+    .some(word => containsText(identityHaystack, word)) ||
+    ["EventUI", "MapSelectUI", "MapItem", "EventOption"]
+      .some(word => containsText(componentHaystack, word));
+  if (!routeRelated) return false;
+  if (!onlyInteractive) return true;
+  return node.interactable !== false || node.clickable === true || (Array.isArray(node.supportedActions) && node.supportedActions.length > 0);
+}
+
+function isRouteFieldName(name) {
+  const text = normalizeText(name);
+  return ["id", "event", "map", "node", "data", "note", "command", "archive", "route", "select", "current"]
+    .some(token => text.includes(token));
+}
+
+function extractRouteCandidatesFromSource(source) {
+  const candidates = [];
+  collectPrimitiveRouteValues(source.value, "", (pathName, value) => {
+    const text = String(value || "");
+    const key = pathName.split(".").pop() || "";
+    const sourceWeight = routeSourceWeight(source.source);
+    const fieldWeight = routeFieldWeight(key);
+    const explicitKind = routeKindFromField(key, text);
+    if (explicitKind) {
+      candidates.push({
+        kind: explicitKind,
+        value: text,
+        source: source.source,
+        sourceIndex: source.index,
+        path: pathName,
+        confidence: Math.min(1, sourceWeight + fieldWeight + 0.2)
+      });
+    }
+    for (const match of routeIdMatches(text)) {
+      candidates.push({
+        kind: match.kind,
+        value: match.value,
+        source: source.source,
+        sourceIndex: source.index,
+        path: pathName,
+        confidence: Math.min(1, sourceWeight + fieldWeight + match.weight)
+      });
+    }
+  });
+  return candidates;
+}
+
+function collectPrimitiveRouteValues(value, pathName, visitor) {
+  if (value == null) return;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    visitor(pathName || "value", value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.slice(0, 80).forEach((item, index) => collectPrimitiveRouteValues(item, pathName + "[" + index + "]", visitor));
+    return;
+  }
+  if (typeof value === "object") {
+    for (const key of Object.keys(value).slice(0, 80)) {
+      collectPrimitiveRouteValues(value[key], pathName ? pathName + "." + key : key, visitor);
+    }
+  }
+}
+
+function routeIdMatches(text) {
+  const result = [];
+  const seen = new Set();
+  const patterns = [
+    { kind: "event_id", regex: /\b(?:event|evt)[_-]?\d+\b/ig, weight: 0.3 },
+    { kind: "event_id", regex: /\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+){2,}\b/g, weight: 0.22 },
+    { kind: "map_node", regex: /\b(?:node|map)[_-]?\d+\b/ig, weight: 0.22 },
+    { kind: "map_id", regex: /\bmap[_-][A-Za-z0-9_]+\b/ig, weight: 0.18 }
+  ];
+  for (const pattern of patterns) {
+    for (const match of String(text || "").matchAll(pattern.regex)) {
+      const value = match[0];
+      const key = pattern.kind + ":" + value.toLocaleLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({ kind: pattern.kind, value, weight: pattern.weight });
+    }
+  }
+  return result;
+}
+
+function routeKindFromField(fieldName, value) {
+  const field = normalizeText(fieldName);
+  const text = String(value || "");
+  if (!text || text.length > 240) return null;
+  if (field.includes("event") && field.includes("id")) return "event_id";
+  if (field === "id" && routeIdMatches(text).some(item => item.kind === "event_id")) return "event_id";
+  if (field.includes("node") && field.includes("id")) {
+    if (isUiNodeIdentifierValue(text)) return "ui_node_id";
+    if (field.includes("map") || routeIdMatches(text).some(item => item.kind === "map_node")) return "map_node";
+  }
+  if (field.includes("map") && field.includes("id")) return "map_id";
+  return null;
+}
+
+function isUiNodeIdentifierValue(value) {
+  const text = String(value || "");
+  return text.includes("|") || text.includes("/Canvas/") || text.startsWith("Canvas/");
+}
+
+function routeSourceWeight(source) {
+  if (source === "runtime.field") return 0.45;
+  if (source === "runtime.object") return 0.32;
+  if (source === "legal_action") return 0.3;
+  if (source === "ui.node") return 0.22;
+  if (source === "ui.window") return 0.18;
+  return 0.1;
+}
+
+function routeFieldWeight(field) {
+  const text = normalizeText(field);
+  if (text.includes("event") && text.includes("id")) return 0.3;
+  if (text.includes("node") && text.includes("data")) return 0.28;
+  if (text.includes("node") && text.includes("id")) return 0.24;
+  if (text.includes("map") && text.includes("id")) return 0.24;
+  if (text === "id" || text.endsWith(".id")) return 0.16;
+  return 0;
+}
+
+function dedupeRouteCandidates(candidates) {
+  const byKey = new Map();
+  for (const candidate of candidates) {
+    if (!candidate.value) continue;
+    const key = candidate.kind + ":" + String(candidate.value).toLocaleLowerCase();
+    const existing = byKey.get(key);
+    if (!existing || candidate.confidence > existing.confidence) {
+      byKey.set(key, candidate);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => b.confidence - a.confidence || String(a.value).localeCompare(String(b.value)));
+}
+
+function buildEventRouteSteps({ activeWindows, uiNodes, legalActions, runtime, eventCandidates, mapCandidates }) {
+  const steps = [];
+  if (activeWindows.length > 0) {
+    steps.push({
+      layer: "ui",
+      name: "active_windows",
+      summary: activeWindows.map(window => window.windowName || window.nodeId).filter(Boolean).join(" -> "),
+      evidence: activeWindows.slice(0, 10)
+    });
+  }
+  if (uiNodes.length > 0) {
+    steps.push({
+      layer: "ui",
+      name: "event_or_map_ui_nodes",
+      summary: uiNodes.slice(0, 5).map(node => node.label || node.text || node.transformPath || node.nodeId).filter(Boolean).join(" | "),
+      evidence: uiNodes.slice(0, 10)
+    });
+  }
+  if (legalActions.length > 0) {
+    steps.push({
+      layer: "gameplay_legal",
+      name: "legal_actions",
+      summary: legalActions.slice(0, 5).map(action => action.id || action.label || action.kind).filter(Boolean).join(" | "),
+      evidence: legalActions.slice(0, 10)
+    });
+  }
+  if (runtime.managers.length > 0) {
+    steps.push({
+      layer: "runtime",
+      name: "map_event_managers",
+      summary: runtime.managers.slice(0, 5).map(item => item.componentType + ":" + (item.name || item.instanceId)).join(" | "),
+      evidence: runtime.managers.slice(0, 10)
+    });
+  }
+  if (mapCandidates.length > 0) {
+    steps.push({
+      layer: "runtime_or_ui",
+      name: "map_candidates",
+      summary: mapCandidates.slice(0, 5).map(item => item.value).join(" | "),
+      evidence: mapCandidates.slice(0, 10)
+    });
+  }
+  if (eventCandidates.length > 0) {
+    steps.push({
+      layer: "runtime_or_ui",
+      name: "event_candidates",
+      summary: eventCandidates.slice(0, 5).map(item => item.value).join(" | "),
+      evidence: eventCandidates.slice(0, 10)
+    });
+  }
+  return steps;
+}
+
+function eventRouteConfidence({ activeWindows, uiNodes, legalActions, runtime, eventCandidates, mapCandidates }) {
+  let score = 0;
+  if (activeWindows.some(window => containsText(window.windowName, "EventUI") || containsText(window.windowName, "Map"))) score += 0.15;
+  if (uiNodes.length > 0) score += 0.15;
+  if (legalActions.length > 0) score += 0.15;
+  if (runtime.managers.length > 0) score += 0.2;
+  if (mapCandidates.length > 0) score += 0.15;
+  if (eventCandidates.length > 0) score += 0.2;
+  return Math.max(0, Math.min(1, Number(score.toFixed(2))));
 }
 
 async function collectRuntimeActionOperations(args) {
