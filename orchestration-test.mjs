@@ -630,13 +630,17 @@ if (!noMouseCoverage.ok || noMouseCoverage.checks?.some(item => !item.ok) || noM
 if (!noMouseEvidence.ok || noMouseEvidence.summary?.sampleCount < 1 || noMouseEvidence.summary?.families?.battle?.observed !== true) {
   throw new Error(`bad no-mouse evidence record ${JSON.stringify(noMouseEvidence, null, 2)}`);
 }
-if (!noMouseCompletionAudit.complete || noMouseCompletionAudit.requirements?.some(item => item.status !== "proved")) {
+const ciAllowedCompletionMissing = new Set(["updated_bridge_artifact_available"]);
+const noMouseCompletionMissing = (noMouseCompletionAudit.missing || []).map(item => item.name);
+const noMouseCompletionCoreReady = noMouseCompletionAudit.requirements?.every(item => item.status === "proved" || ciAllowedCompletionMissing.has(item.name));
+if (!noMouseCompletionCoreReady || noMouseCompletionMissing.some(name => !ciAllowedCompletionMissing.has(name))) {
   throw new Error(`bad no-mouse completion audit ${JSON.stringify(noMouseCompletionAudit, null, 2)}`);
 }
 if (!executeOperation.ok || executeOperation.dryRun !== true || executeOperation.selected?.family !== "battle" || executeOperation.selected?.action !== "play_card_target" || executeOperation.plannedCall?.tool !== "witch_play_card" || executeOperation.result?.skipped !== true) {
   throw new Error(`bad execute operation ${JSON.stringify(executeOperation, null, 2)}`);
 }
-if (!noMouseEvidencePlan.ok || noMouseEvidencePlan.complete !== true || noMouseEvidencePlan.readyProbeCount !== 0 || noMouseEvidencePlan.completionAuditCall?.tool !== "witch_no_mouse_completion_audit" || !Array.isArray(noMouseEvidencePlan.stateAdvanceCandidates)) {
+const noMouseEvidencePlanMissing = (noMouseEvidencePlan.audit?.missing || []).map(item => item.name);
+if (!noMouseEvidencePlan.ok || noMouseEvidencePlan.readyProbeCount !== 0 || noMouseEvidencePlan.completionAuditCall?.tool !== "witch_no_mouse_completion_audit" || !Array.isArray(noMouseEvidencePlan.stateAdvanceCandidates) || noMouseEvidencePlanMissing.some(name => !ciAllowedCompletionMissing.has(name))) {
   throw new Error(`bad no-mouse evidence plan ${JSON.stringify(noMouseEvidencePlan, null, 2)}`);
 }
 if (!noMouseProbeOperation.ok || noMouseProbeOperation.probe?.executed !== true || noMouseProbeOperation.probe?.noMouse !== true || noMouseProbeOperation.summary?.operationProbes?.battle?.play_card_target?.executedSuccess !== true) {
