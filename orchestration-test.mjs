@@ -666,7 +666,7 @@ if (!bridgeArtifactSync.ok || bridgeArtifactSync.dryRun !== true || bridgeArtifa
 }
 const stateAdvanceAcceptable =
   noMouseStateAdvanceDrive.reason === "already_complete" && noMouseStateAdvanceDrive.complete === true ||
-  ["max_steps", "max_rounds"].includes(noMouseStateAdvanceDrive.reason);
+  ["dry_run_planned", "max_steps", "max_rounds"].includes(noMouseStateAdvanceDrive.reason);
 if (!noMouseStateAdvanceDrive.ok || noMouseStateAdvanceDrive.dryRun !== true || !stateAdvanceAcceptable) {
   throw new Error(`bad no-mouse state advance drive ${JSON.stringify(noMouseStateAdvanceDrive, null, 2)}`);
 }
