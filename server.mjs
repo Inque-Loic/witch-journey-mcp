@@ -3448,6 +3448,50 @@ function operationProofStep(missing, operations) {
   return step;
 }
 
+function rankControlOperations(operations) {
+  return (operations || []).slice().sort((a, b) =>
+    controlOperationRank(b) - controlOperationRank(a) ||
+    String(a.label || "").localeCompare(String(b.label || ""))
+  );
+}
+
+function controlOperationRank(operation) {
+  let score = 0;
+  if (operation?.ready !== false) score += 1000;
+  if (operation?.family === "legal_action") score += 500;
+  if (operation?.family === "ui") score += 260;
+  if (operation?.family === "scene") score += 180;
+  if (operation?.family === "battle") score += 220;
+  if (operation?.family === "runtime_action") score -= 200;
+  if (operation?.intent === "confirm" || operation?.intent === "reward_confirm") score += 220;
+  if (operation?.intent === "continue" || operation?.intent === "next") score += 180;
+  if (operation?.intent === "reward") score += 160;
+  if (operation?.intent === "cancel" || operation?.intent === "exit") score -= 200;
+  const action = normalizeActionName(operation?.action || "");
+  if (action === "click" || action === "submit" || action === "perform") score += 60;
+  return score;
+}
+
+function classifyUiOperationIntent(node, action) {
+  const text = normalizeText([
+    node?.label,
+    node?.text,
+    node?.nodeId,
+    node?.windowName,
+    node?.transformPath
+  ].filter(Boolean).join(" "));
+  const normalizedAction = normalizeActionName(action);
+  if (normalizedAction !== "click" && normalizedAction !== "submit") return "inspect";
+  if (/(reward|rewards|award|claim|collect|loot|gain|奖励|领取|获得|拾取|结算|战利品)/i.test(text)) {
+    if (/(confirm|ok|yes|continue|next|确定|确认|继续|下一步|完成|关闭)/i.test(text)) return "reward_confirm";
+    return "reward";
+  }
+  if (/(confirm|ok|yes|accept|apply|submit|确定|确认|好的|同意|完成)/i.test(text)) return "confirm";
+  if (/(continue|next|proceed|advance|skip|继续|下一步|前进|推进|跳过)/i.test(text)) return "continue";
+  if (/(cancel|back|close|exit|no|取消|返回|关闭|退出|否)/i.test(text)) return "cancel";
+  return "generic";
+}
+
 function operationMatchesMissingType(operation, missing) {
   if (!operation || operation.family !== missing.family) return false;
   if (missing.family === "legal_action" && missing.action === "perform") return true;
@@ -5129,10 +5173,35 @@ async function collectUiSnapshot(args) {
   };
   const direct = await safeCallBridge("ui.snapshot", params);
   if (direct?.ok !== false || !isUnknownBridgeCommand(direct, "ui.snapshot")) {
-    return direct;
+    return normalizeUiSnapshotVisibility(direct, params);
   }
 
-  return invokeAutomationStaticFallback("ui.snapshot", "Witch.UI.Automation.RuntimeUiAutomationService", "CaptureSnapshot", [params], direct);
+  const fallback = await invokeAutomationStaticFallback("ui.snapshot", "Witch.UI.Automation.RuntimeUiAutomationService", "CaptureSnapshot", [params], direct);
+  return normalizeUiSnapshotVisibility(fallback, params);
+}
+
+function normalizeUiSnapshotVisibility(result, params) {
+  if (params?.includeHidden === true || result?.ok === false) return result;
+  const data = result?.data && typeof result.data === "object" ? result.data : result;
+  if (!data || typeof data !== "object") return result;
+  const windows = Array.isArray(data.Windows) ? data.Windows : null;
+  const nodes = Array.isArray(data.Nodes) ? data.Nodes : null;
+  if (!windows && !nodes) return result;
+  const visibleWindows = windows
+    ? windows.filter(item => fieldValue(item, "Visible") !== false && fieldValue(item, "ActiveInHierarchy") !== false)
+    : undefined;
+  const visibleNodes = nodes
+    ? nodes.filter(item => fieldValue(item, "Visible") !== false && fieldValue(item, "ActiveInHierarchy") !== false)
+    : undefined;
+  const filteredData = {
+    ...data,
+    ...(visibleWindows ? { Windows: visibleWindows, HiddenWindowsFiltered: windows.length - visibleWindows.length } : {}),
+    ...(visibleNodes ? { Nodes: visibleNodes, HiddenNodesFiltered: nodes.length - visibleNodes.length } : {})
+  };
+  if (result?.data && typeof result.data === "object") {
+    return { ...result, data: filteredData, filteredHidden: true };
+  }
+  return { ...filteredData, filteredHidden: true };
 }
 
 async function interactUi(args) {
@@ -5383,11 +5452,13 @@ async function collectControlMap(args) {
       }
       actions.forEach(action => {
         const requirement = extraArgumentsForUiAction(action);
+        const intent = classifyUiOperationIntent(node, action);
         operations.push({
           id: "ui:" + (node.nodeId || node.instanceId || index) + ":" + action,
           family: "ui",
           action,
           label: node.label || node.text || node.nodeId || node.transformPath || String(index),
+          intent,
           noMouse: true,
           ready: requirement.length === 0,
           requiresArguments: requirement,
@@ -5474,6 +5545,7 @@ async function collectControlMap(args) {
   for (const operation of operations) {
     byFamily[operation.family] = (byFamily[operation.family] || 0) + 1;
   }
+  const rankedOperations = rankControlOperations(operations);
 
   return {
     ok: true,
@@ -5483,7 +5555,8 @@ async function collectControlMap(args) {
     readyOperationCount: operations.filter(item => item.ready).length,
     unmappedCount: unmapped.length,
     byFamily,
-    operations,
+    operations: rankedOperations,
+    recommendedOperations: rankedOperations.filter(item => item.ready !== false).slice(0, 12),
     unmapped,
     snapshotSummary: {
       phase: snapshot.legalActions?.data?.Phase || snapshot.legalActions?.data?.phase || null,
@@ -6398,6 +6471,14 @@ async function executeOperation(args) {
     plannedCall,
     controlMap: args?.includeControlMap ? controlMap : undefined
   };
+  const requiresStateProof = operationRequiresStateProof(selected);
+  if (requiresStateProof) {
+    response.stateProofRequired = true;
+    response.preState = await collectOperationStateFingerprint({
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+  }
 
   if (dryRun) {
     response.result = { ok: true, skipped: true, plannedTool: plannedCall.tool, arguments: plannedCall.arguments };
@@ -6406,6 +6487,22 @@ async function executeOperation(args) {
 
   response.result = await executeRecommendedCall(plannedCall, { forceDryRun: false });
   response.ok = response.result?.ok !== false;
+  if (requiresStateProof) {
+    const delayMs = Math.max(0, Math.min(5000, Number(args?.postVerifyDelayMs ?? 750)));
+    if (delayMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    response.postState = await collectOperationStateFingerprint({
+      includeHidden: !!args?.includeHidden,
+      onlyInteractive: args?.onlyInteractive !== false
+    });
+    response.stateProof = compareOperationStateFingerprints(response.preState, response.postState);
+    if (response.result?.ok !== false && response.stateProof.changed !== true && args?.allowUnverifiedSuccess !== true) {
+      response.ok = false;
+      response.reason = "operation_unverified_no_state_change";
+      response.message = "The underlying call returned success, but MCP could not prove that the map/game state advanced. Treat this as not successful unless allowUnverifiedSuccess is explicitly set.";
+    }
+  }
   if (args?.includePostSummary) {
     response.postSummary = await collectStateSummary({
       includeHidden: !!args?.includeHidden,
@@ -6413,6 +6510,92 @@ async function executeOperation(args) {
     });
   }
   return response;
+}
+
+function operationRequiresStateProof(operation) {
+  const text = normalizeText([
+    operation?.id,
+    operation?.family,
+    operation?.action,
+    operation?.label,
+    operation?.target?.componentType,
+    operation?.target?.methodName,
+    operation?.call?.tool,
+    operation?.call?.arguments?.methodName
+  ].filter(Boolean).join(" "));
+  return /(map_continue|map_next|nextmap|cmdnextmap|cmdreadytonextmap|map_ready_to_next|map_try_change|trychange|进入下一地图|继续地图|推进地图)/i.test(text);
+}
+
+async function collectOperationStateFingerprint(args) {
+  const trace = await collectEventRouteTrace({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    includeComponentDetails: true,
+    includeHookLog: false,
+    maxUiNodes: 40,
+    maxActions: 80,
+    maxRuntimeObjects: 20,
+    maxMembersPerComponent: 40
+  });
+  const snapshot = await collectGameSnapshot({
+    includeHidden: !!args?.includeHidden,
+    onlyInteractive: args?.onlyInteractive !== false,
+    includeUi: true,
+    includeScene: false,
+    includeBattle: false,
+    includeLegalActions: true
+  });
+  const uiData = snapshot.ui?.data || snapshot.ui || {};
+  const legalActions = legalActionsFrom(snapshot.legalActions).map(summarizeAction);
+  const fingerprint = {
+    ok: trace.ok === true || snapshot.ok === true,
+    capturedAtUtc: new Date().toISOString(),
+    traceOk: trace.ok === true,
+    snapshotOk: snapshot.ok === true,
+    activeWindows: (trace.activeWindows || []).map(item => item.windowName || item.nodeId || item.transformPath).filter(Boolean),
+    eventCandidates: (trace.eventCandidates || []).slice(0, 20).map(item => item.value),
+    mapCandidates: (trace.mapCandidates || []).slice(0, 20).map(item => item.value),
+    legalActions: legalActions.slice(0, 40).map(item => item.id || item.kind || item.label).filter(Boolean),
+    layoutSignature: fieldValue(uiData, "LayoutSignature") || null,
+    visibleUiText: arrayValue(uiData, "Nodes")
+      .filter(item => fieldValue(item, "Visible") !== false && fieldValue(item, "ActiveInHierarchy") !== false)
+      .map(item => fieldValue(item, "Label") || fieldValue(item, "Text"))
+      .filter(Boolean)
+      .slice(0, 40)
+  };
+  fingerprint.signature = JSON.stringify({
+    activeWindows: fingerprint.activeWindows,
+    eventCandidates: fingerprint.eventCandidates,
+    mapCandidates: fingerprint.mapCandidates,
+    legalActions: fingerprint.legalActions,
+    layoutSignature: fingerprint.layoutSignature,
+    visibleUiText: fingerprint.visibleUiText
+  });
+  return fingerprint;
+}
+
+function compareOperationStateFingerprints(before, after) {
+  const changedFields = [];
+  if (!before?.ok || !after?.ok) {
+    return {
+      changed: false,
+      reason: "fingerprint_unavailable",
+      beforeOk: before?.ok === true,
+      afterOk: after?.ok === true,
+      changedFields
+    };
+  }
+  for (const field of ["activeWindows", "eventCandidates", "mapCandidates", "legalActions", "layoutSignature", "visibleUiText"]) {
+    if (JSON.stringify(before[field] || null) !== JSON.stringify(after[field] || null)) {
+      changedFields.push(field);
+    }
+  }
+  return {
+    changed: changedFields.length > 0,
+    changedFields,
+    beforeSignature: before.signature,
+    afterSignature: after.signature
+  };
 }
 
 async function probeNoMouseOperation(args) {
@@ -7149,8 +7332,10 @@ function snapshotSourceEvidence(result) {
 function summarizeUi(ui, args) {
   const nodes = arrayValue(ui, "Nodes");
   const windows = arrayValue(ui, "Windows");
+  const visibleNodes = nodes.filter(item => args?.includeHidden || (fieldValue(item, "Visible") !== false && fieldValue(item, "ActiveInHierarchy") !== false));
   return {
     totalNodes: fieldValue(ui, "TotalNodes") ?? nodes.length,
+    visibleNodes: visibleNodes.length,
     layoutSignature: fieldValue(ui, "LayoutSignature"),
     activeWindows: windows
       .filter(item => fieldValue(item, "Visible") !== false && fieldValue(item, "ActiveInHierarchy") !== false)
@@ -7162,7 +7347,7 @@ function summarizeUi(ui, args) {
         transformPath: fieldValue(item, "TransformPath"),
         siblingIndex: fieldValue(item, "SiblingIndex")
       })),
-    clickableNodes: nodes
+    clickableNodes: visibleNodes
       .filter(item => fieldValue(item, "Clickable") === true || hasAction(item, "click"))
       .slice(0, limit(args.maxUiNodes, 20))
       .map(item => ({
