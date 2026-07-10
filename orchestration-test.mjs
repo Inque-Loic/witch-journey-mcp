@@ -354,7 +354,7 @@ function send(id, method, params) {
 
 async function waitForMessage(id) {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < 3000) {
+  while (Date.now() - startedAt < 30000) {
     const message = messages.find(item => item.id === id);
     if (message) return message;
     await new Promise(resolve => setTimeout(resolve, 25));

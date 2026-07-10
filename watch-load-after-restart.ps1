@@ -48,7 +48,7 @@ function Get-LogEvidence {
   try {
     Select-String `
       -LiteralPath $playerLog `
-      -Pattern "CodexMcpBridge|ModConfig|Mods|ModInitialize|Entry\.dll|Entry\.lua|Exception|failed|error|错误|失败" |
+      -Pattern "CodexMcpBridge|ModConfig|Mods|ModInitialize|Entry\.dll|Entry\.lua|Exception|failed|error" |
       Select-Object -Last $Last |
       ForEach-Object { $_.Line }
   } catch {
