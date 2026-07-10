@@ -62,8 +62,13 @@ Assert-Field ($capabilities.noMouseMode.enabledByDefault -eq $true) "witch_capab
 Assert-Field (@($capabilities.noMouseMode.forbiddenCommands) -contains "input.mouse") "witch_capabilities did not list input.mouse as forbidden" $capabilities
 
 Write-Host "Checking bridge availability for live no-mouse checks..."
-$bridgeStatus = Invoke-WitchMcpJson witch_status
-$bridgeAvailable = $bridgeStatus.ok -eq $true
+$bridgeAvailable = $false
+try {
+  $bridgeStatus = Invoke-WitchMcpJson witch_status
+  $bridgeAvailable = $bridgeStatus.ok -eq $true
+} catch {
+  $bridgeAvailable = $false
+}
 
 Write-Host "Checking no-mouse audit coverage..."
 $audit = Invoke-WitchMcpJson witch_no_mouse_audit @{ includeCurrentState = $bridgeAvailable; includePolicyTests = $true }
